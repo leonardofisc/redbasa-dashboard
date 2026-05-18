@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Basa · Tablero de Calidad</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── RED BASA PALETTE ─────────────────────────────────────── */
+:root {
+  --rb-green:  #2F7C4F;  /* primary green */
+  --rb-green2: #256040;  /* dark green */
+  --rb-green3: #1B4930;  /* deep green */
+  --rb-mint:   #4CAF7A;  /* accent light green */
+  --rb-lime:   #E8F5EE;  /* very light green bg */
+  --rb-lime2:  #C8E6D4;  /* light green border */
+  --white:     #FFFFFF;
+  --bg:        #F5F9F6;  /* slightly green-tinted bg */
+  --card:      #FFFFFF;
+  --border:    #D6E8DE;
+  --text:      #1A2E22;
+  --muted:     #4A6B56;
+  --light:     #EAF3ED;
+
+  --ok:     #1B6B3A; --ok-bg:  #D4EDDE; --ok-bd:  #8FCCA8;
+  --warn:   #7A5C00; --wn-bg:  #FFF4CC; --wn-bd:  #E8C84A;
+  --red:    #8B1A1A; --re-bg:  #FAE8E8; --re-bd:  #E8A0A0;
+  --blue:   #1A4B8C; --bl-bg:  #E5EFFE; --bl-bd:  #A5BEF0;
+  --neu:    #1A4B8C;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── TOPBAR ────────────────────────────────────────────────── */
+.top {
+  background: var(--rb-green3);
+  height: 58px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  position: sticky; top: 0; z-index: 100;
+  border-bottom: 3px solid var(--rb-mint);
+  box-shadow: 0 2px 12px rgba(0,0,0,.15);
+}
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 15px; font-weight: 600; color: var(--white);
+  text-decoration: none;
+}
+.brand-logo {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--rb-mint); display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--rb-green3); letter-spacing: -.3px;
+}
+.brand-name { display: flex; flex-direction: column; line-height: 1.1; }
+.brand-name .top-line { font-size: 11px; font-weight: 400; color: rgba(255,255,255,.6); letter-spacing: .08em; text-transform: uppercase; }
+.brand-name .bot-line { font-size: 14px; font-weight: 600; color: var(--white); }
+
+/* filter strip in topbar */
+.top-filters {
+  display: flex; align-items: center; gap: 8px; flex: 1; max-width: 640px; margin: 0 20px;
+}
+.tf-label { font-size: 11px; color: rgba(255,255,255,.5); white-space: nowrap; }
+.tf-select {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; padding: 5px 10px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 20px; color: var(--white);
+  cursor: pointer; outline: none;
+  appearance: none; padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='white' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+  background-color: rgba(255,255,255,.12);
+  transition: background .12s;
+}
+.tf-select:hover { background-color: rgba(255,255,255,.2); }
+.tf-select option { background: var(--rb-green3); color: white; }
+.tf-sep { width: 1px; height: 18px; background: rgba(255,255,255,.15); }
+
+.top-right { display: flex; align-items: center; gap: 10px; }
+.live { font-size: 11px; color: rgba(255,255,255,.55); display: flex; align-items: center; gap: 5px; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ADE80; animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.btn { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; border-radius: 20px; padding: 6px 14px; cursor: pointer; transition: all .12s; }
+.btn-ghost { background: rgba(255,255,255,.12); color: white; border: 1px solid rgba(255,255,255,.25); }
+.btn-ghost:hover { background: rgba(255,255,255,.22); }
+
+/* ── PAGE ──────────────────────────────────────────────────── */
+.page { max-width: 1380px; margin: 0 auto; padding: 22px 22px 60px; }
+.ph { margin-bottom: 20px; display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.pt { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--rb-green3); font-weight: 400; }
+.ps { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.ls { font-size: 11px; color: var(--muted); }
+
+/* ── NETWORK PANEL ─────────────────────────────────────────── */
+.net {
+  background: linear-gradient(135deg, var(--rb-green3) 0%, var(--rb-green) 100%);
+  border-radius: 14px; padding: 20px 24px; margin-bottom: 20px;
+  border: 1px solid var(--rb-green2);
+}
+.net-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 8px; }
+.net-title { font-family: 'Playfair Display', serif; font-size: 17px; color: white; font-weight: 400; }
+.pt-tabs { display: flex; gap: 4px; background: rgba(0,0,0,.2); border-radius: 8px; padding: 3px; }
+.pt-btn { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; padding: 4px 12px; border-radius: 6px; cursor: pointer; color: rgba(255,255,255,.6); border: none; background: none; transition: all .12s; }
+.pt-btn.on { background: var(--rb-mint); color: var(--rb-green3); font-weight: 600; }
+
+.net-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.nk { background: rgba(0,0,0,.18); border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,.08); }
+.nk-lbl { font-size: 10px; color: rgba(255,255,255,.5); margin-bottom: 4px; line-height: 1.3; }
+.nk-val { font-size: 24px; font-weight: 600; line-height: 1; }
+.nkp { color: #6EE89A; } .nkn { color: #F87171; } .nkb { color: #93C5FD; } .nkw { color: #FCD34D; }
+.nk-d { font-size: 10px; margin-top: 4px; display: flex; align-items: center; gap: 3px; }
+.du { color: #6EE89A; } .dd { color: #F87171; } .de { color: rgba(255,255,255,.45); }
+
+.ep-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ep-box { background: rgba(0,0,0,.15); border-radius: 10px; padding: 12px 14px; border-left: 3px solid; }
+.ep-box.ep { border-color: var(--rb-mint); }
+.ep-box.noep { border-color: rgba(255,255,255,.2); }
+.ep-lbl { font-size: 10px; font-weight: 600; color: rgba(255,255,255,.45); letter-spacing: .05em; margin-bottom: 6px; text-transform: uppercase; }
+.ep-val { font-size: 22px; font-weight: 600; color: white; }
+.ep-sub { font-size: 10px; color: rgba(255,255,255,.35); margin-top: 2px; }
+
+/* ── GRID ──────────────────────────────────────────────────── */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+
+/* ── SANATORIO CARD ─────────────────────────────────────────── */
+.sc {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; cursor: pointer;
+  transition: box-shadow .15s, transform .15s;
+}
+.sc:hover { box-shadow: 0 4px 20px rgba(31,100,60,.12); transform: translateY(-1px); }
+.sc.with-ep { border-top: 3px solid var(--rb-mint); }
+.sc.no-ep   { border-top: 3px solid var(--border); }
+
+.sc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 15px 9px; border-bottom: 1px solid var(--border);
+  background: var(--rb-lime);
+}
+.sc-name { font-size: 13px; font-weight: 600; color: var(--rb-green3); }
+.sc-meta { font-size: 10px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+.ep-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--ok-bg); color: var(--ok); }
+.noep-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--light); color: var(--muted); }
+.st-row { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; }
+.dok { background: #22C55E; } .dw { background: #F59E0B; } .de2 { background: #EF4444; } .dna { background: #CBD5E1; }
+
+.sc-periods { display: grid; grid-template-columns: repeat(3,1fr); border-bottom: 1px solid var(--border); }
+.period-col { padding: 10px 12px; text-align: center; border-right: 1px solid var(--border); }
+.period-col:last-child { border-right: none; }
+.period-lbl { font-size: 9px; color: var(--muted); margin-bottom: 4px; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; }
+.period-nps { font-size: 20px; font-weight: 600; line-height: 1; }
+.period-n   { font-size: 9px; color: #B0BBC8; margin-top: 2px; }
+.period-col.act { background: var(--rb-lime); }
+
+/* NPS colors */
+.npos { color: var(--ok); } .nneu { color: var(--neu); } .nwarn { color: var(--warn); } .nneg { color: var(--red); }
+
+/* Prepaga section */
+.sc-prep { padding: 10px 15px 12px; border-bottom: 1px solid var(--border); }
+.prep-hdr { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 7px; }
+.prep-cats { display: flex; gap: 6px; margin-bottom: 7px; }
+.prep-cat { flex: 1; background: var(--rb-lime); border-radius: 8px; padding: 7px 10px; text-align: center; border: 1px solid var(--border); }
+.prep-cat-lbl { font-size: 9px; color: var(--muted); margin-bottom: 2px; }
+.prep-cat-val { font-size: 16px; font-weight: 600; }
+.prep-cat-n { font-size: 8px; color: #B0BBC8; }
+.prep-ind { display: flex; flex-wrap: wrap; gap: 4px; }
+.pip { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 6px; display: flex; align-items: center; gap: 3px; border: 1px solid; white-space: nowrap; }
+.pip-n { font-size: 9px; font-weight: 400; opacity: .7; margin-left: 2px; }
+
+/* Spark */
+.sc-trend { padding: 8px 15px 10px; }
+.trend-lbl { font-size: 10px; color: var(--muted); margin-bottom: 5px; display: flex; justify-content: space-between; }
+
+/* AI */
+.sc-ai { padding: 8px 15px 10px; background: var(--rb-lime); border-top: 1px solid var(--border); }
+.ai-h { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; font-size: 10px; }
+.ai-icon { color: var(--rb-mint); font-size: 12px; }
+.ai-lbl { font-weight: 600; color: var(--rb-green3); }
+.ai-d { color: var(--muted); margin-left: auto; }
+.ai-txt { font-size: 11px; color: var(--muted); line-height: 1.55; }
+
+/* ── MODAL ──────────────────────────────────────────────────── */
+.ov { display: none; position: fixed; inset: 0; background: rgba(0,30,10,.5); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center; }
+.ov.open { display: flex; }
+.modal { background: var(--card); border-radius: 14px; width: 500px; max-width: 95vw; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,30,10,.25); animation: up .2s ease; border: 1px solid var(--border); }
+@keyframes up { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+.mh { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; border-bottom: 1px solid var(--border); background: var(--rb-lime); }
+.mt { font-size: 15px; font-weight: 600; color: var(--rb-green3); }
+.mx { width: 28px; height: 28px; border-radius: 50%; border: none; background: var(--light); cursor: pointer; font-size: 16px; color: var(--muted); }
+.mb { padding: 16px 18px 20px; }
+.fg { margin-bottom: 12px; }
+.fl { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; display: block; }
+.fh { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: block; }
+.fi { font-family: 'Inter', sans-serif; width: 100%; font-size: 13px; border: 1px solid var(--border); border-radius: 7px; padding: 8px 11px; outline: none; color: var(--text); background: var(--bg); transition: border .12s; }
+.fi:focus { border-color: var(--rb-mint); background: white; }
+.f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bpri { font-family: 'Inter', sans-serif; width: 100%; padding: 10px; background: var(--rb-green); color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 4px; transition: background .12s; }
+.bpri:hover { background: var(--rb-green2); }
+.bsec { font-family: 'Inter', sans-serif; width: 100%; padding: 9px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer; margin-top: 5px; }
+
+/* Skeleton */
+.sk { background: linear-gradient(90deg,var(--light) 25%,var(--border) 50%,var(--light) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
+@keyframes shimmer { 0%{background-position:200%} 100%{background-position:-200%} }
+
+/* Toast */
+.toast { position: fixed; bottom: 22px; right: 22px; background: var(--rb-green3); color: white; padding: 10px 18px; border-radius: 8px; font-size: 12px; z-index: 300; transform: translateY(20px); opacity: 0; transition: all .2s; border-left: 3px solid var(--rb-mint); }
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* ── AUTH OVERLAY ─────────────────────────────────────────── */
+.auth-wall {
+  position: fixed; inset: 0; background: var(--rb-green3);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500; flex-direction: column; gap: 0;
+}
+.auth-box {
+  background: white; border-radius: 14px; padding: 36px 40px;
+  width: 360px; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+.auth-logo { font-size: 28px; font-weight: 700; color: var(--rb-green3); margin-bottom: 4px; }
+.auth-sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+.auth-hint { font-size: 11px; color: var(--muted); margin-top: 12px; }
+.auth-err { font-size: 11px; color: var(--red); margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+
+<!-- AUTH WALL -->
+<div class="auth-wall" id="auth-wall">
+  <div class="auth-box">
+    <div class="auth-logo">Red BASA</div>
+    <div class="auth-sub">Tablero de Calidad · Acceso interno</div>
+    <input class="fi" type="password" id="pw-input" placeholder="Contraseña de acceso"
+      onkeydown="if(event.key==='Enter')checkAuth()" style="margin-bottom:10px;text-align:center">
+    <button class="bpri" onclick="checkAuth()">Ingresar</button>
+    <div class="auth-err" id="auth-err">Contraseña incorrecta</div>
+    <div class="auth-hint">Contactá al equipo de calidad para obtener acceso</div>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div class="top">
+  <a class="brand" href="#">
+    <div class="brand-logo">RB</div>
+    <div class="brand-name">
+      <span class="top-line">Red</span>
+      <span class="bot-line">BASA</span>
+    </div>
+  </a>
+
+  <div class="top-filters">
+    <span class="tf-label">Filtrar:</span>
+    <select class="tf-select" id="f-sanatorio" onchange="applyTopFilters()">
+      <option value="">Todos los sanatorios</option>
+    </select>
+    <div class="tf-sep"></div>
+    <select class="tf-select" id="f-obra" onchange="applyTopFilters()">
+      <option value="">Todas las obras sociales</option>
+      <option value="premium">Solo premium</option>
+      <option value="noprem">Solo no premium</option>
+      <option value="Swiss Medical">Swiss Medical</option>
+      <option value="OSDE">OSDE</option>
+      <option value="Omint">Omint</option>
+      <option value="Medicus">Medicus</option>
+      <option value="Sanidad">Sanidad</option>
+      <option value="Accord Salud">Accord Salud</option>
+      <option value="Galeno">Galeno</option>
+      <option value="Jerárquico">Jerárquico</option>
+    </select>
+    <div class="tf-sep"></div>
+    <select class="tf-select" id="f-estado" onchange="applyTopFilters()">
+      <option value="">Cualquier estado</option>
+      <option value="critico">⚠ Críticos (NPS &lt;−20)</option>
+      <option value="positivo">✓ Positivos (NPS ≥+30)</option>
+      <option value="ep">Modelo EP activo</option>
+    </select>
+  </div>
+
+  <div class="top-right">
+    <div class="live"><div class="live-dot"></div><span id="sync-lbl">En vivo</span></div>
+    <button class="btn btn-ghost" onclick="refreshAll()">↻ Actualizar</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="ph">
+    <div>
+      <div class="pt">Red de Sanatorios</div>
+      <div class="ps" id="page-sub">Cargando configuración…</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="pt-tabs">
+        <button class="pt-btn on" onclick="setPeriod('week',this)">−1 semana</button>
+        <button class="pt-btn" onclick="setPeriod('month',this)">−1 mes</button>
+        <button class="pt-btn" onclick="setPeriod('year',this)">−1 año</button>
+      </div>
+      <div class="ls" id="sync-time"></div>
+    </div>
+  </div>
+
+  <!-- NETWORK -->
+  <div class="net">
+    <div class="net-hdr">
+      <div class="net-title">Resumen de la Red</div>
+    </div>
+    <div class="net-kpis" id="net-kpis">
+      <div class="nk sk" style="height:72px"></div>
+      <div class="nk sk" style="height:72px"></div>
+      <div class="nk sk" style="height:72px"></div>
+      <div class="nk sk" style="height:72px"></div>
+      <div class="nk sk" style="height:72px"></div>
+    </div>
+    <div class="ep-split" id="ep-split">
+      <div class="ep-box ep sk" style="height:58px"></div>
+      <div class="ep-box noep sk" style="height:58px"></div>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── AUTH ──────────────────────────────────────────────────── */
+// Password is hashed in the client for simple protection.
+// For higher security, use GitHub Pages + Cloudflare Access (see README).
+const PASS_HASH = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'; // default: "123456"
+// To change: SHA-256 of your password. Use: https://emn178.github.io/online-tools/sha256.html
+
+async function sha256(msg) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function checkAuth() {
+  const pw = document.getElementById('pw-input').value;
+  const hash = await sha256(pw);
+  if (hash === PASS_HASH) {
+    sessionStorage.setItem('rb_auth', hash);
+    document.getElementById('auth-wall').style.display = 'none';
+  } else {
+    document.getElementById('auth-err').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+  }
+}
+
+function checkSession() {
+  const stored = sessionStorage.getItem('rb_auth');
+  if (stored === PASS_HASH) {
+    document.getElementById('auth-wall').style.display = 'none';
+    return true;
+  }
+  return false;
+}
+
+/* ── CONFIG ─────────────────────────────────────────────────── */
+const CONFIG_SHEET_ID = '13u5Nj2YMZTlHo-REpYfyl1IEsClnEzXcgl2IDClQBlk';
+const RESULTS_SHEET_ID = '';
+
+const COL = {
+  date:    'Marca temporal',
+  rec:     '¿Qué probabilidad hay de que nos recomiendes a un amigo o familiar?',
+  comment: 'Aquí puede escribir cualquier sugerencia, felicitación o reclamo sobre tu experiencia en nuestro centro de atención:',
+};
+
+const PREMIUM_MAP = {
+  'Swiss Medical': ['swiss medical','swis medical'],
+  'OSDE':          ['osde'],
+  'Omint':         ['omint'],
+  'Medicus':       ['medicus'],
+  'Sanidad':       ['sanidad'],
+  'Accord Salud':  ['accord'],
+  'Galeno':        ['galeno'],
+  'Jerárquico':    ['jerarquico','jerárquico'],
+};
+
+/* ── STATE ──────────────────────────────────────────────────── */
+let sanatorios=[], sanData={}, activePeriod='week';
+let fSanatorio='', fObra='', fEstado='';
+
+/* ── UTILS ──────────────────────────────────────────────────── */
+async function fetchCSV(id,gid='0'){
+  const r=await fetch(`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.text();
+}
+function parseCSV(txt){
+  const lines=txt.split('\n');if(lines.length<2)return[];
+  const hdr=splitL(lines[0]);
+  return lines.slice(1).filter(l=>l.trim()).map(l=>{
+    const v=splitL(l),o={};hdr.forEach((h,i)=>o[h]=(v[i]||'').trim());return o;
+  });
+}
+function splitL(l){const r=[];let c='',q=false;for(const ch of l){if(ch==='"'){q=!q}else if(ch===','&&!q){r.push(c);c=''}else c+=ch}r.push(c);return r}
+function parseDate(s){if(!s)return null;const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):null}
+
+function classifyObra(obra){
+  const o=(obra||'').toLowerCase().trim();
+  if(!o||o==='nan')return'';
+  for(const[name,keys]of Object.entries(PREMIUM_MAP)){if(keys.some(k=>o.includes(k)))return name;}
+  return'__noprem';
+}
+
+function calcNPS(rows){
+  const recs=rows.map(x=>parseFloat(x[COL.rec])).filter(v=>!isNaN(v)&&v>=0&&v<=10);
+  if(!recs.length)return{nps:null,n:0,p:0,d:0};
+  const p=recs.filter(v=>v>=9).length/recs.length*100;
+  const d=recs.filter(v=>v<=6).length/recs.length*100;
+  return{nps:Math.round(p-d),n:recs.length,p:Math.round(p),d:Math.round(d)};
+}
+
+function cutoff(p){
+  const n=new Date();
+  if(p==='week'){const d=new Date(n);d.setDate(d.getDate()-7);return d}
+  if(p==='month'){const d=new Date(n);d.setMonth(d.getMonth()-1);return d}
+  const d=new Date(n);d.setFullYear(d.getFullYear()-1);return d;
+}
+function prevRange(p){
+  const e=cutoff(p),s=new Date(e);
+  if(p==='week')s.setDate(s.getDate()-7);
+  else if(p==='month')s.setMonth(s.getMonth()-1);
+  else s.setFullYear(s.getFullYear()-1);
+  return{s,e};
+}
+
+function npsClr(v){if(v===null)return'na';if(v>=30)return'pos';if(v>=0)return'neu';if(v>=-20)return'warn';return'neg'}
+function npsCss(v){return{pos:'npos',neu:'nneu',warn:'nwarn',neg:'nneg',na:''}[npsClr(v)]||''}
+function fmt(v){if(v===null)return'—';return(v>=0?'+':'')+v}
+
+function pipColor(v){
+  if(v===null)return{bg:'var(--light)',color:'var(--muted)',bd:'var(--border)'};
+  if(v>=30)return{bg:'var(--ok-bg)',color:'var(--ok)',bd:'var(--ok-bd)'};
+  if(v>=0)return{bg:'var(--bl-bg)',color:'var(--blue)',bd:'var(--bl-bd)'};
+  if(v>=-20)return{bg:'var(--wn-bg)',color:'var(--warn)',bd:'var(--wn-bd)'};
+  return{bg:'var(--re-bg)',color:'var(--red)',bd:'var(--re-bd)'};
+}
+
+/* ── CONFIG LOAD ─────────────────────────────────────────────── */
+async function loadConfig(){
+  try{
+    const csv=await fetchCSV(CONFIG_SHEET_ID,'0');
+    const rows=parseCSV(csv);
+    const centers=rows.filter(r=>r['Centro Médico']&&r['URL encuesta calidad']);
+    const remote=centers.map(r=>{
+      const url=r['URL encuesta calidad']||'';
+      const m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      const gm=url.match(/[#?]gid=(\d+)/);
+      const since=r['Monitoreado desde']||'';
+      return{
+        id:r['Centro Médico'].toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
+        name:r['Centro Médico'],since,city:r['Ciudad']||'',
+        sheetId:m?m[1]:'',gid:gm?gm[1]:'0',
+        obraCol:r['Columna Obra Social']||'Obra social:',
+        hasEP:!!since.trim(),active:true
+      };
+    }).filter(s=>s.sheetId);
+    // populate sanatorio filter
+    const sel=document.getElementById('f-sanatorio');
+    remote.forEach(s=>{
+      const o=document.createElement('option');
+      o.value=s.id;o.textContent=s.name;sel.appendChild(o);
+    });
+    const saved=getLocal();
+    const rids=remote.map(s=>s.id);
+    return[...remote,...saved.filter(s=>!rids.includes(s.id))];
+  }catch(e){console.warn(e);return getLocal()}
+}
+function getLocal(){try{return JSON.parse(localStorage.getItem('rb_v4')||'[]')}catch{return[]}}
+function saveLocal(list){localStorage.setItem('rb_v4',JSON.stringify(list))}
+
+/* ── CENTER DATA LOAD ─────────────────────────────────────────── */
+async function loadCenter(san){
+  try{
+    const csv=await fetchCSV(san.sheetId,san.gid);
+    const rows=parseCSV(csv);
+    const oc=san.obraCol;
+    rows.forEach(r=>{r._obra=classifyObra(r[oc]||'')});
+
+    function periodRows(p){const cut=cutoff(p);return rows.filter(r=>{const d=parseDate(r[COL.date]);return d&&d>=cut})}
+    function prevRows(p){const pr=prevRange(p);return rows.filter(r=>{const d=parseDate(r[COL.date]);return d&&d>=pr.s&&d<pr.e})}
+
+    const week  ={curr:calcNPS(periodRows('week')), prev:calcNPS(prevRows('week'))};
+    const month ={curr:calcNPS(periodRows('month')),prev:calcNPS(prevRows('month'))};
+    const year  ={curr:calcNPS(periodRows('year')), prev:calcNPS(prevRows('year'))};
+
+    const premRows  =rows.filter(r=>r._obra&&r._obra!=='__noprem');
+    const nopremRows=rows.filter(r=>r._obra==='__noprem');
+    const prem  =calcNPS(premRows);
+    const noprem=calcNPS(nopremRows);
+
+    const individual={};
+    for(const[pname,keys]of Object.entries(PREMIUM_MAP)){
+      const sub=rows.filter(r=>keys.some(k=>(r[oc]||'').toLowerCase().includes(k)));
+      if(sub.length>=5)individual[pname]=calcNPS(sub);
+    }
+
+    // Monthly (18 months)
+    const byM={};
+    rows.forEach(r=>{
+      const d=parseDate(r[COL.date]);if(!d)return;
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if(!byM[key])byM[key]={all:[],prem:[]};
+      const rec=parseFloat(r[COL.rec]);
+      if(isNaN(rec)||rec<0||rec>10)return;
+      byM[key].all.push(rec);
+      if(r._obra&&r._obra!=='__noprem')byM[key].prem.push(rec);
+    });
+    function npsArr(arr){if(!arr.length)return{nps:null,n:0};const p=arr.filter(v=>v>=9).length/arr.length*100,d=arr.filter(v=>v<=6).length/arr.length*100;return{nps:Math.round(p-d),n:arr.length}}
+    const monthly=Object.keys(byM).sort().slice(-18).map(m=>({m,tot:npsArr(byM[m].all),prem:npsArr(byM[m].prem)}));
+
+    function premPeriod(p){return calcNPS(periodRows(p).filter(r=>r._obra&&r._obra!=='__noprem'))}
+
+    sanData[san.id]={rows,week,month,year,prem,noprem,individual,monthly,
+      premWeek:premPeriod('week'),premMonth:premPeriod('month'),premYear:premPeriod('year'),
+      loaded:true,error:null};
+  }catch(e){
+    const nd={nps:null,n:0};
+    sanData[san.id]={rows:[],week:{curr:nd,prev:nd},month:{curr:nd,prev:nd},year:{curr:nd,prev:nd},
+      prem:nd,noprem:nd,individual:{},monthly:[],premWeek:nd,premMonth:nd,premYear:nd,
+      loaded:false,error:e.message};
+  }
+}
+
+/* ── FILTER LOGIC ─────────────────────────────────────────────── */
+function applyTopFilters(){
+  fSanatorio=document.getElementById('f-sanatorio').value;
+  fObra=document.getElementById('f-obra').value;
+  fEstado=document.getElementById('f-estado').value;
+  renderNet();renderGrid();
+}
+
+function getFilteredList(){
+  let list=sanatorios.filter(s=>s.active!==false);
+  if(fSanatorio)list=list.filter(s=>s.id===fSanatorio);
+  if(fEstado==='ep')list=list.filter(s=>s.hasEP);
+  if(fEstado==='critico'){const c=s=>(sanData[s.id]?.[activePeriod]?.curr?.nps??0);list=list.filter(s=>c(s)<-20)}
+  if(fEstado==='positivo'){const c=s=>(sanData[s.id]?.[activePeriod]?.curr?.nps??-999);list=list.filter(s=>c(s)>=30)}
+  // Sort críticos first, then ascending NPS
+  list.sort((a,b)=>{
+    const na=sanData[a.id]?.[activePeriod]?.curr?.nps??0;
+    const nb=sanData[b.id]?.[activePeriod]?.curr?.nps??0;
+    return na-nb;
+  });
+  return list;
+}
+
+/* Returns NPS for a center considering the obra filter */
+function getFilteredNPS(san){
+  const d=sanData[san.id];if(!d||!d.loaded)return{nps:null,n:0};
+  if(!fObra){return d[activePeriod]?.curr||{nps:null,n:0}}
+  // filter by obra
+  const oc=san.obraCol;
+  const cut=cutoff(activePeriod);
+  let rows=d.rows.filter(r=>{const dd=parseDate(r[COL.date]);return dd&&dd>=cut});
+  if(fObra==='premium'){rows=rows.filter(r=>r._obra&&r._obra!=='__noprem')}
+  else if(fObra==='noprem'){rows=rows.filter(r=>r._obra==='__noprem')}
+  else{
+    const keys=PREMIUM_MAP[fObra]||[];
+    rows=rows.filter(r=>keys.some(k=>(r[oc]||'').toLowerCase().includes(k)));
+  }
+  return calcNPS(rows);
+}
+
+/* ── NETWORK SUMMARY ──────────────────────────────────────────── */
+function renderNet(){
+  const loaded=getFilteredList().filter(s=>sanData[s.id]?.loaded);
+  const epC=loaded.filter(s=>s.hasEP);
+  const noepC=loaded.filter(s=>!s.hasEP);
+
+  function avgNPS(list){const vs=list.map(s=>getFilteredNPS(s).nps).filter(v=>v!==null);return vs.length?Math.round(vs.reduce((a,b)=>a+b,0)/vs.length):null}
+  function totN(list){return list.reduce((s,c)=>s+(getFilteredNPS(c).n||0),0)}
+
+  const avgAll=avgNPS(loaded);
+  const prevVals=loaded.map(s=>sanData[s.id]?.[activePeriod]?.prev?.nps).filter(v=>v!=null);
+  const avgPrev=prevVals.length?Math.round(prevVals.reduce((a,b)=>a+b,0)/prevVals.length):null;
+  const total=totN(loaded);
+  const crit=loaded.filter(s=>getFilteredNPS(s).nps!==null&&getFilteredNPS(s).nps<-20).length;
+  const pos=loaded.filter(s=>getFilteredNPS(s).nps!==null&&getFilteredNPS(s).nps>=30).length;
+
+  const premVals=loaded.map(s=>{
+    const d=sanData[s.id];
+    const pdata=activePeriod==='week'?d?.premWeek:activePeriod==='month'?d?.premMonth:d?.premYear;
+    return pdata?.nps;
+  }).filter(v=>v!==null);
+  const avgPrem=premVals.length?Math.round(premVals.reduce((a,b)=>a+b,0)/premVals.length):null;
+
+  const pl=activePeriod==='week'?'última semana':activePeriod==='month'?'último mes':'último año';
+  function dl(c,p){if(c===null||p===null)return null;const d=c-p;return d>0?{t:'+'+d+' pts',cls:'du',a:'↑'}:d<0?{t:d+' pts',cls:'dd',a:'↓'}:{t:'Sin cambio',cls:'de',a:'→'}}
+  const delta=dl(avgAll,avgPrev);
+
+  document.getElementById('net-kpis').innerHTML=`
+    <div class="nk"><div class="nk-lbl">NPS promedio red · ${pl}</div><div class="nk-val ${avgAll===null?'nkb':avgAll>=0?'nkp':'nkn'}">${fmt(avgAll)}</div>${delta?`<div class="nk-d ${delta.cls}">${delta.a} ${delta.t} vs período ant.</div>`:'<div class="nk-d de">—</div>'}</div>
+    <div class="nk"><div class="nk-lbl">NPS premium · ${pl}</div><div class="nk-val ${avgPrem===null?'nkb':avgPrem>=0?'nkp':'nkn'}">${fmt(avgPrem)}</div><div class="nk-d de">Swiss, OSDE, Omint…</div></div>
+    <div class="nk"><div class="nk-lbl">Encuestas · ${pl}</div><div class="nk-val nkb">${total.toLocaleString('es-AR')}</div><div class="nk-d de">${loaded.length}/${sanatorios.length} centros</div></div>
+    <div class="nk"><div class="nk-lbl">Críticos (NPS &lt; −20)</div><div class="nk-val ${crit>0?'nkn':'nkp'}">${crit}</div><div class="nk-d ${crit>0?'dd':'du'}">${crit>0?'Atención requerida':'Sin alertas'}</div></div>
+    <div class="nk"><div class="nk-lbl">Positivos (NPS ≥ +30)</div><div class="nk-val ${pos>0?'nkp':'nkw'}">${pos}</div><div class="nk-d de">de ${loaded.length} activos</div></div>`;
+
+  const epN=avgNPS(epC),nN=avgNPS(noepC);
+  document.getElementById('ep-split').innerHTML=`
+    <div class="ep-box ep"><div class="ep-lbl">✦ Con modelo EP · ${pl}</div><div class="ep-val ${npsCss(epN)}">${fmt(epN)}</div><div class="ep-sub">${epC.length} centro${epC.length!==1?'s':''}: ${epC.map(s=>s.name.split(' ')[0]).join(', ')}</div></div>
+    <div class="ep-box noep"><div class="ep-lbl">Sin modelo EP · ${pl}</div><div class="ep-val ${npsCss(nN)}">${fmt(nN)}</div><div class="ep-sub">${noepC.length} centro${noepC.length!==1?'s':''}: ${noepC.map(s=>s.name.split(' ')[0]).join(', ')}</div></div>`;
+}
+
+/* ── CARD ─────────────────────────────────────────────────────── */
+function renderCard(san){
+  const d=sanData[san.id];
+  if(!d)return`<div class="sc ${san.hasEP?'with-ep':'no-ep'}"><div class="sc-head"><div><div class="sc-name">${san.name}</div><div class="sc-meta sk" style="height:10px;width:80px;margin-top:4px"></div></div></div><div style="padding:20px"><div class="sk" style="height:56px;margin-bottom:8px"></div><div class="sk" style="height:40px"></div></div></div>`;
+
+  const{week,month,year,prem,noprem,individual,monthly,error}=d;
+  const curr=activePeriod==='week'?week.curr:activePeriod==='month'?month.curr:year.curr;
+  const prev=activePeriod==='week'?week.prev:activePeriod==='month'?month.prev:year.prev;
+
+  // If obra filter active, override NPS display
+  const filteredNPS=getFilteredNPS(san);
+
+  let arrow='';
+  if(curr.nps!==null&&prev.nps!==null){const dd=curr.nps-prev.nps;arrow=dd>0?'<span style="color:var(--ok);font-size:11px">↑</span>':dd<0?'<span style="color:var(--red);font-size:11px">↓</span>':'<span style="color:var(--muted);font-size:11px">→</span>'}
+
+  let stHtml='';
+  if(error)stHtml=`<div class="st-row"><div class="dot de2"></div><span style="color:var(--red)">Error</span></div>`;
+  else if(curr.nps===null)stHtml=`<div class="st-row"><div class="dot dna"></div>Sin datos</div>`;
+  else if(curr.nps<-20)stHtml=`<div class="st-row"><div class="dot de2"></div><span style="color:var(--red)">Crítico</span></div>`;
+  else stHtml=`<div class="st-row"><div class="dot dok"></div>Normal</div>`;
+
+  const epBadge=san.hasEP?`<span class="ep-badge">Modelo EP desde ${san.since}</span>`:`<span class="noep-badge">Sin modelo EP</span>`;
+
+  const periods=[{lbl:'−1 sem',v:week.curr,k:'week'},{lbl:'−1 mes',v:month.curr,k:'month'},{lbl:'−1 año',v:year.curr,k:'year'}];
+  const periCols=periods.map(({lbl,v,k})=>`<div class="period-col${k===activePeriod?' act':''}"><div class="period-lbl">${lbl}</div><div class="period-nps ${npsCss(v.nps)}">${fmt(v.nps)}</div><div class="period-n">n=${v.n}</div></div>`).join('');
+
+  // Prepaga section — respect obra filter
+  let prepHtml='';
+  if(!fObra||fObra==='premium'||fObra==='noprem'){
+    const showPrem=!fObra||fObra==='premium';
+    const showNop=!fObra||fObra==='noprem';
+    const cats=[];
+    if(showPrem)cats.push(`<div class="prep-cat"><div class="prep-cat-lbl">Premium</div><div class="prep-cat-val ${npsCss(prem.nps)}">${fmt(prem.nps)}</div><div class="prep-cat-n">n=${prem.n}</div></div>`);
+    if(showNop)cats.push(`<div class="prep-cat"><div class="prep-cat-lbl">No premium</div><div class="prep-cat-val ${npsCss(noprem.nps)}">${fmt(noprem.nps)}</div><div class="prep-cat-n">n=${noprem.n}</div></div>`);
+    const chips=Object.entries(individual).map(([name,val])=>{const c=pipColor(val.nps);return`<span class="pip" style="background:${c.bg};color:${c.color};border-color:${c.bd}">${fmt(val.nps)}<span class="pip-n">${name} n=${val.n}</span></span>`}).join('');
+    prepHtml=`<div class="sc-prep"><div class="prep-hdr">Apertura por prepagas</div><div class="prep-cats">${cats.join('')}</div><div class="prep-ind">${chips}</div></div>`;
+  } else {
+    // specific obra filter — show single metric
+    const c=pipColor(filteredNPS.nps);
+    prepHtml=`<div class="sc-prep"><div class="prep-hdr">NPS filtrado: ${fObra}</div><div class="prep-ind"><span class="pip" style="background:${c.bg};color:${c.color};border-color:${c.bd};font-size:15px;padding:5px 12px">${fmt(filteredNPS.nps)}<span class="pip-n">n=${filteredNPS.n}</span></span></div></div>`;
+  }
+
+  // Sparkline
+  const mkey=fObra&&fObra!=='premium'&&fObra!=='noprem'?'tot':fObra==='premium'?'prem':'tot';
+  const vals=monthly.map(m=>m[mkey].nps).filter(v=>v!==null);
+  const mx=Math.max(...vals.map(Math.abs),1);
+  const spkHtml=monthly.length?`<div class="sc-trend">
+    <div class="trend-lbl"><span>NPS mensual (${monthly.length} meses)</span><span>${monthly.slice(-1)[0]?.m||''}</span></div>
+    <div style="display:flex;gap:2px;align-items:flex-end;height:38px">
+      ${monthly.map(m=>{const v=m[mkey].nps,n=m[mkey].n;if(v===null)return`<div style="flex:1;height:3px;background:var(--border);border-radius:2px;opacity:.4;align-self:flex-end"></div>`;const h=Math.max(Math.round(Math.abs(v)/mx*34),3);const bg=v>=30?'#2F7C4F':v>=0?'#1A4B8C':v>=-20?'#7A5C00':'#8B1A1A';return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="height:${h}px;width:100%;background:${bg};border-radius:2px 2px 0 0;opacity:${n<=3?.3:1}"></div><div style="font-size:7px;color:var(--muted)">${m.m.slice(2,4)+'/'+m.m.slice(5,7)}</div></div>`}).join('')}
+    </div>
+  </div>`:'';
+
+  return`<div class="sc ${san.hasEP?'with-ep':'no-ep'}" onclick="openDetail('${san.id}')">
+    <div class="sc-head">
+      <div>
+        <div class="sc-name">${san.name} ${arrow}</div>
+        <div class="sc-meta">${epBadge}${san.city?' · '+san.city:''}</div>
+      </div>
+      ${stHtml}
+    </div>
+    <div class="sc-periods">${periCols}</div>
+    ${prepHtml}
+    ${spkHtml}
+    <div class="sc-ai">
+      <div class="ai-h"><span class="ai-icon">✦</span><span class="ai-lbl">Análisis IA</span><span class="ai-d">próximo 4:00am</span></div>
+      <div class="ai-txt">El análisis de comentarios se genera automáticamente cada noche.</div>
+    </div>
+  </div>`;
+}
+
+function renderGrid(){
+  const list=getFilteredList();
+  const grid=document.getElementById('grid');
+  if(!list.length){grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:50px;color:var(--muted);font-size:13px">Sin centros para el filtro seleccionado.</div>`;return}
+  grid.innerHTML=list.map(s=>renderCard(s)).join('');
+}
+
+function openDetail(id){
+  const san=sanatorios.find(s=>s.id===id);const d=sanData[id];if(!san)return;
+  const lines=[
+    `NPS −1sem: ${fmt(d?.week?.curr?.nps)} (n=${d?.week?.curr?.n||0})`,
+    `NPS −1mes: ${fmt(d?.month?.curr?.nps)} (n=${d?.month?.curr?.n||0})`,
+    `NPS −1año: ${fmt(d?.year?.curr?.nps)} (n=${d?.year?.curr?.n||0})`,
+    `Premium: ${fmt(d?.prem?.nps)} · No premium: ${fmt(d?.noprem?.nps)}`,
+  ].join('\n');
+  if(confirm(`${san.name}\n\n${lines}\n\nAbrir planilla en Google Sheets?`))
+    window.open(`https://docs.google.com/spreadsheets/d/${san.sheetId}`,'_blank');
+}
+
+function setPeriod(p,btn){
+  activePeriod=p;
+  document.querySelectorAll('.pt-btn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
+  renderNet();renderGrid();
+}
+
+function toast(msg,ms=3000){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
+
+async function refreshAll(){
+  document.getElementById('sync-lbl').textContent='Actualizando…';toast('↻ Actualizando datos…');
+  await Promise.all(sanatorios.map(s=>loadCenter(s)));
+  renderNet();renderGrid();
+  document.getElementById('sync-lbl').textContent='En vivo';
+  document.getElementById('sync-time').textContent='Actualizado: '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  toast('✓ Actualizado');
+}
+setInterval(refreshAll,10*60*1000);
+
+/* ── INIT ──────────────────────────────────────────────────── */
+(async function init(){
+  if(!checkSession())return;  // auth wall handles display
+  document.getElementById('sync-lbl').textContent='Cargando…';
+  const grid=document.getElementById('grid');
+  grid.innerHTML=Array(3).fill(0).map(()=>`<div class="sc with-ep" style="min-height:200px"><div class="sc-head" style="background:var(--rb-lime)"><div><div class="sk" style="height:13px;width:150px;margin-bottom:5px"></div><div class="sk" style="height:10px;width:100px"></div></div></div><div style="padding:14px"><div class="sk" style="height:50px;margin-bottom:8px"></div><div class="sk" style="height:36px"></div></div></div>`).join('');
+  sanatorios=await loadConfig();
+  document.getElementById('page-sub').textContent=`${sanatorios.length} sanatorio${sanatorios.length!==1?'s':''} · datos en tiempo real desde Google Sheets`;
+  await Promise.all(sanatorios.map(s=>loadCenter(s)));
+  renderNet();renderGrid();
+  document.getElementById('sync-lbl').textContent='En vivo';
+  document.getElementById('sync-time').textContent='Actualizado: '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+})();
+</script>
+</body>
+</html>
