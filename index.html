@@ -233,7 +233,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
   <div class="auth-box">
     <div class="auth-logo">Red BASA</div>
     <div class="auth-sub">Tablero de Calidad · Acceso interno</div>
-    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.2</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.3</div>
     <input class="fi" type="password" id="pw-input" placeholder="Contraseña de acceso"
       onkeydown="if(event.key==='Enter')checkAuth()" style="margin-bottom:10px;text-align:center">
     <button class="bpri" onclick="checkAuth()">Ingresar</button>
@@ -282,7 +282,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 
   <div class="top-right">
     <div class="live"><div class="live-dot"></div><span id="sync-lbl">En vivo</span></div>
-    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.2</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.3</div>
     <button class="btn btn-ghost" onclick="refreshAll()">↻ Actualizar</button>
   </div>
 </div>
@@ -392,7 +392,7 @@ async function fetchCSV(id,gid='0'){
   return r.text();
 }
 function parseCSV(txt){
-  const lines=txt.split('\n');if(lines.length<2)return[];
+  const lines=txt.replace(/\r/g,'').split('\n');if(lines.length<2)return[];
   const hdr=splitL(lines[0]);
   return lines.slice(1).filter(l=>l.trim()).map(l=>{
     const v=splitL(l),o={};hdr.forEach((h,i)=>o[h]=(v[i]||'').trim());return o;
