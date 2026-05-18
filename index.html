@@ -233,7 +233,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
   <div class="auth-box">
     <div class="auth-logo">Red BASA</div>
     <div class="auth-sub">Tablero de Calidad · Acceso interno</div>
-    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.1</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.2</div>
     <input class="fi" type="password" id="pw-input" placeholder="Contraseña de acceso"
       onkeydown="if(event.key==='Enter')checkAuth()" style="margin-bottom:10px;text-align:center">
     <button class="bpri" onclick="checkAuth()">Ingresar</button>
@@ -282,7 +282,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 
   <div class="top-right">
     <div class="live"><div class="live-dot"></div><span id="sync-lbl">En vivo</span></div>
-    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.1</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.2</div>
     <button class="btn btn-ghost" onclick="refreshAll()">↻ Actualizar</button>
   </div>
 </div>
@@ -447,15 +447,16 @@ async function loadConfig(){
   try{
     const csv=await fetchCSV(CONFIG_SHEET_ID,'0');
     const rows=parseCSV(csv);
-    const centers=rows.filter(r=>r['Centro Médico']&&r['URL encuesta calidad']);
+    const centers=rows.filter(r=>(r['Centro Medico']||r['Centro Médico'])&&r['URL encuesta calidad']);
     const remote=centers.map(r=>{
       const url=r['URL encuesta calidad']||'';
       const m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
       const gm=url.match(/[#?]gid=(\d+)/);
       const since=r['Monitoreado desde']||'';
+      const nombre=r['Centro Medico']||r['Centro Médico'];
       return{
-        id:r['Centro Médico'].toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
-        name:r['Centro Médico'],since,city:r['Ciudad']||'',
+        id:nombre.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
+        name:nombre,since,city:r['Ciudad']||'',
         sheetId:m?m[1]:'',gid:gm?gm[1]:'0',
         obraCol:r['Columna Obra Social']||'Obra social:',
         hasEP:!!since.trim(),active:true
