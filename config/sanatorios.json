@@ -1,0 +1,44 @@
+{
+  "_note": "Este archivo es de referencia. La fuente de verdad es la Google Sheet de configuración.",
+  "config_sheet_id": "13u5Nj2YMZTlHo-REpYfyl1IEsClnEzXcgl2IDClQBlk",
+  "results_sheet_id": "COMPLETAR_DESPUES_DE_CREAR_SHEET",
+  "sanatorios": [
+    {
+      "id": "centro-gallego",
+      "name": "Centro Gallego de Buenos Aires",
+      "since": "octubre 2025",
+      "sheetId": "1h2wIQpxIY_bGKP0QIly-511QqIofNdO9c8Uv9tk_NoA",
+      "gid": "213280738",
+      "obraCol": "Obra social:",
+      "active": true
+    },
+    {
+      "id": "san-jose",
+      "name": "San José",
+      "since": "febrero 2026",
+      "sheetId": "1ijj1Qzb0ZNE1SE_6lCV_DLnbAyW2nZFel_cuHeDaffI",
+      "gid": "213280738",
+      "obraCol": "",
+      "active": true
+    },
+    {
+      "id": "general-sarmiento",
+      "name": "General Sarmiento",
+      "since": "",
+      "sheetId": "1ipYE7iniQ-VFltgjL9RpjQhuzVDpUM6hPdkLzeJjll8",
+      "gid": "0",
+      "obraCol": "",
+      "active": true
+    },
+    {
+      "id": "santa-clara-varela",
+      "name": "Santa Clara Varela",
+      "since": "",
+      "sheetId": "",
+      "gid": "0",
+      "obraCol": "",
+      "active": false,
+      "_note": "URL pendiente de carga en la planilla de datos"
+    }
+  ]
+}
