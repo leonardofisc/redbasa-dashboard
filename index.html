@@ -342,6 +342,7 @@ async function checkAuth() {
   if (hash === PASS_HASH) {
     sessionStorage.setItem('rb_auth', hash);
     document.getElementById('auth-wall').style.display = 'none';
+    init();
   } else {
     document.getElementById('auth-err').style.display = 'block';
     document.getElementById('pw-input').value = '';
@@ -714,7 +715,7 @@ async function refreshAll(){
 setInterval(refreshAll,10*60*1000);
 
 /* ── INIT ──────────────────────────────────────────────────── */
-(async function init(){
+async function init(){
   if(!checkSession())return;  // auth wall handles display
   document.getElementById('sync-lbl').textContent='Cargando…';
   const grid=document.getElementById('grid');
@@ -725,7 +726,8 @@ setInterval(refreshAll,10*60*1000);
   renderNet();renderGrid();
   document.getElementById('sync-lbl').textContent='En vivo';
   document.getElementById('sync-time').textContent='Actualizado: '+new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-})();
+}
+init();
 </script>
 </body>
 </html>
