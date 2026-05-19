@@ -19,6 +19,9 @@ RESULTS_SHEET_ID      = os.environ["RESULTS_SHEET_ID"]
 ANTHROPIC_API_KEY     = os.environ["ANTHROPIC_API_KEY"]
 GOOGLE_SA             = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
 
+# Token cache
+_token_cache = {"token": None, "expires": 0}
+
 # Columnas 0-based
 C_DATE  = 0;  C_CENTRO = 2
 C_ADM   = 3;  C_MED    = 4;  C_ENF  = 5;  C_SEG  = 6;  C_LIMP  = 7
@@ -31,10 +34,57 @@ PREMIUM_KEYS  = [p.lower() for p in PREMIUM_NAMES] + ['swis medical','jerarquico
 MIN_N = 5
 
 # ── UTILS ─────────────────────────────────────────────────────────────────
+def get_token():
+    """Get (or reuse) a Google OAuth2 token via service account JWT."""
+    now = int(time.time())
+    if _token_cache["token"] and now < _token_cache["expires"] - 60:
+        return _token_cache["token"]
+
+    import base64
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+
+    sa = GOOGLE_SA
+    hdr = base64.urlsafe_b64encode(json.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b'=').decode()
+    pay = base64.urlsafe_b64encode(json.dumps({
+        "iss": sa["client_email"],
+        "scope": "https://www.googleapis.com/auth/spreadsheets",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": now, "exp": now + 3600
+    }).encode()).rstrip(b'=').decode()
+    pk = serialization.load_pem_private_key(sa["private_key"].encode(), password=None, backend=default_backend())
+    sig = base64.urlsafe_b64encode(
+        pk.sign(f"{hdr}.{pay}".encode(), padding.PKCS1v15(), hashes.SHA256())
+    ).rstrip(b'=').decode()
+    jwt = f"{hdr}.{pay}.{sig}"
+
+    data = urllib.parse.urlencode({
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": jwt
+    }).encode()
+    with urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/token", data=data)) as r:
+        resp = json.loads(r.read())
+    _token_cache["token"]   = resp["access_token"]
+    _token_cache["expires"] = now + resp.get("expires_in", 3600)
+    return _token_cache["token"]
+
+def fetch_sheet_values(sheet_id):
+    """Read all values from sheet using Sheets API v4 (authenticated)."""
+    token = get_token()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/A1:Z100000"
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req) as r:
+        data = json.loads(r.read())
+    rows = data.get("values", [])
+    # Pad rows to same length
+    max_len = max((len(r) for r in rows), default=0)
+    return [r + [''] * (max_len - len(r)) for r in rows]
+
 def fetch_csv(sheet_id, gid="0"):
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-    with urllib.request.urlopen(url) as r:
-        return list(csv.reader(io.StringIO(r.read().decode('utf-8'))))
+    """Kept for compatibility — uses authenticated Sheets API instead of CSV export."""
+    return fetch_sheet_values(sheet_id)
 
 def parse_date(s):
     if not s: return None
@@ -174,29 +224,11 @@ def financiador_rows(rows, fin):
 FINANCIADORES = ['TODAS','PREMIUM','NO_PREMIUM','SIN_DATO'] + PREMIUM_NAMES
 
 # ── GOOGLE AUTH ───────────────────────────────────────────────────────────
-def get_token():
-    import base64
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.backends import default_backend
-    sa = GOOGLE_SA
-    now = int(time.time())
-    hdr = base64.urlsafe_b64encode(json.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b'=').decode()
-    pay = base64.urlsafe_b64encode(json.dumps({
-        "iss": sa["client_email"],
-        "scope": "https://www.googleapis.com/auth/spreadsheets",
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now, "exp": now+3600
-    }).encode()).rstrip(b'=').decode()
-    pk = serialization.load_pem_private_key(sa["private_key"].encode(), password=None, backend=default_backend())
-    sig = base64.urlsafe_b64encode(pk.sign(f"{hdr}.{pay}".encode(), padding.PKCS1v15(), hashes.SHA256())).rstrip(b'=').decode()
-    jwt = f"{hdr}.{pay}.{sig}"
-    data = urllib.parse.urlencode({"grant_type":"urn:ietf:params:oauth:grant-type:jwt-bearer","assertion":jwt}).encode()
-    with urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/token", data=data)) as r:
-        return json.loads(r.read())["access_token"]
+# get_token() is defined above near fetch_sheet_values
 
-def write_sheet(token, values):
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('Hoja 1!A1')}?valueInputOption=RAW"
+def write_sheet(values):
+    token = get_token()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('A1')}?valueInputOption=RAW"
     body = json.dumps({"values": values}).encode()
     req = urllib.request.Request(url, data=body, method='PUT')
     req.add_header('Authorization', f'Bearer {token}')
@@ -204,8 +236,9 @@ def write_sheet(token, values):
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
 
-def clear_sheet(token):
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('Hoja 1!A1:Z2000')}:clear"
+def clear_sheet():
+    token = get_token()
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('A1:Z2000')}:clear"
     req = urllib.request.Request(url, data=b'{}', method='POST')
     req.add_header('Authorization', f'Bearer {token}')
     req.add_header('Content-Type', 'application/json')
@@ -333,9 +366,8 @@ def main():
         print(f"     {len(PERIODOS)*len(FINANCIADORES)} filas generadas")
 
     print(f"\n3. Escribiendo {len(rows_out)-1} filas en Google Sheets...")
-    token = get_token()
-    clear_sheet(token)
-    write_sheet(token, rows_out)
+    clear_sheet()
+    write_sheet(rows_out)
     print("   ✓ Listo")
     print(f"\nTotal: {len(centros)} centros × {len(PERIODOS)} períodos × {len(FINANCIADORES)} financiadores = {len(rows_out)-1} filas")
 
