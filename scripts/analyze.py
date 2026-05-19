@@ -291,6 +291,9 @@ def main():
         "centro","periodo","financiador",
         "nps","n_nps","pct_promotores","pct_detractores",
         "csat_rrhh","csat_confort","csat_adic","csat_global",
+        "csat_adm","csat_med","csat_enf","csat_seg","csat_limp",
+        "csat_limp_cal","csat_inst","csat_menu",
+        "csat_espera","csat_solucion",
         "estrellas","n_estrellas",
         "nps_prev","csat_prev","estrellas_prev",
         "dist_nps","sparkline",
@@ -336,26 +339,34 @@ def main():
                 rrhh, conf, adic, glob      = calc_csat(f_rows)
                 st_v, n_st                  = calc_stars(f_rows)
 
+                # Individual CSAT dimensions
+                c_adm  = calc_csat_col(f_rows, [C_ADM],  True)
+                c_med  = calc_csat_col(f_rows, [C_MED],  True)
+                c_enf  = calc_csat_col(f_rows, [C_ENF],  True)
+                c_seg  = calc_csat_col(f_rows, [C_SEG],  True)
+                c_limp = calc_csat_col(f_rows, [C_LIMP], True)
+                c_lcal = calc_csat_col(f_rows, [C_LCAL], False)
+                c_inst = calc_csat_col(f_rows, [C_INST], False)
+                c_menu = calc_csat_col(f_rows, [C_MENU], False)
+                c_esp  = calc_csat_col(f_rows, [C_ESP],  True)
+                c_sol  = calc_csat_col(f_rows, [C_SOL],  True)
+
                 nps_prev, *_  = calc_nps(fp_rows)
                 _, _, _, cp   = calc_csat(fp_rows)
                 st_prev, _    = calc_stars(fp_rows)
 
+                def v(x): return x if x is not None else ''
+
                 rows_out.append([
                     centro, periodo, fin,
-                    nps_v  if nps_v  is not None else '',
-                    n_nps,
-                    pct_p  if pct_p  is not None else '',
-                    pct_d  if pct_d  is not None else '',
-                    rrhh   if rrhh   is not None else '',
-                    conf   if conf   is not None else '',
-                    adic   if adic   is not None else '',
-                    glob   if glob   is not None else '',
-                    st_v   if st_v   is not None else '',
-                    n_st,
-                    nps_prev  if nps_prev  is not None else '',
-                    cp        if cp        is not None else '',
-                    st_prev   if st_prev   is not None else '',
-                    json.dumps(dist, ensure_ascii=False)   if fin=='TODAS' else '',
+                    v(nps_v), n_nps, v(pct_p), v(pct_d),
+                    v(rrhh), v(conf), v(adic), v(glob),
+                    v(c_adm), v(c_med), v(c_enf), v(c_seg), v(c_limp),
+                    v(c_lcal), v(c_inst), v(c_menu),
+                    v(c_esp), v(c_sol),
+                    v(st_v), n_st,
+                    v(nps_prev), v(cp), v(st_prev),
+                    json.dumps(dist, ensure_ascii=False)      if fin=='TODAS' else '',
                     json.dumps(sparkline, ensure_ascii=False) if fin=='TODAS' and periodo=='month' else '',
                     resumen   if fin=='TODAS' and periodo=='month' else '',
                     problemas if fin=='TODAS' and periodo=='month' else '',
