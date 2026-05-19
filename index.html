@@ -202,6 +202,17 @@ body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--t
 .bpri:hover { background: var(--rb-green2); }
 .bsec { font-family: 'Poppins', sans-serif; width: 100%; padding: 9px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer; margin-top: 5px; }
 
+
+/* Score distribution bar */
+.score-dist { padding: 8px 15px 10px; border-bottom: 1px solid var(--border); }
+.score-dist-lbl { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+.score-bars { display: flex; gap: 2px; align-items: flex-end; height: 32px; }
+.score-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.score-bar { width: 100%; border-radius: 2px 2px 0 0; min-height: 2px; transition: height .3s; }
+.score-bar-n { font-size: 7px; color: var(--muted); }
+.score-labels { display: flex; gap: 2px; margin-top: 2px; }
+.score-label { flex: 1; text-align: center; font-size: 7px; color: var(--muted); font-weight: 600; }
+
 /* Skeleton */
 .sk { background: linear-gradient(90deg,var(--light) 25%,var(--border) 50%,var(--light) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; }
 @keyframes shimmer { 0%{background-position:200%} 100%{background-position:-200%} }
@@ -234,7 +245,7 @@ body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--t
   <div class="auth-box">
     <div class="auth-logo">Red BASA</div>
     <div class="auth-sub">Experiencia del Paciente · Acceso interno</div>
-    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.5</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-18px;margin-bottom:18px">v1.6</div>
     <input class="fi" type="password" id="pw-input" placeholder="Contraseña de acceso"
       onkeydown="if(event.key==='Enter')checkAuth()" style="margin-bottom:10px;text-align:center">
     <button class="bpri" onclick="checkAuth()">Ingresar</button>
@@ -283,7 +294,7 @@ body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--t
 
   <div class="top-right">
     <div class="live"><div class="live-dot"></div><span id="sync-lbl">En vivo</span></div>
-    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.5</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.3)">v1.6</div>
     <button class="btn btn-ghost" onclick="refreshAll()">↻ Actualizar</button>
   </div>
 </div>
@@ -535,6 +546,28 @@ async function loadCenter(san){
   }
 }
 
+
+function calcScoreDist(rows){
+  const dist={};
+  for(let i=0;i<=10;i++)dist[i]=0;
+  rows.forEach(r=>{
+    const v=Math.round(parseFloat(r[COL.rec]));
+    if(!isNaN(v)&&v>=0&&v<=10)dist[v]=(dist[v]||0)+1;
+  });
+  return dist;
+}
+function scoreDistHtml(rows){
+  const dist=calcScoreDist(rows);
+  const max=Math.max(...Object.values(dist),1);
+  const colors={0:'#EF5350',1:'#EF5350',2:'#EF5350',3:'#EF5350',4:'#EF5350',5:'#EF5350',6:'#EF5350',7:'#F9A825',8:'#F9A825',9:'#20d3c2',10:'#20d3c2'};
+  const bars=Object.entries(dist).map(([score,n])=>{
+    const h=Math.max(Math.round((n/max)*28),n>0?2:1);
+    return`<div class="score-bar-wrap"><div class="score-bar" style="height:${h}px;background:${n>0?colors[score]:'var(--border)'};opacity:${n>0?1:.3}"></div><div class="score-bar-n">${n>0?n:''}</div></div>`;
+  }).join('');
+  const labels=Object.keys(dist).map(s=>`<div class="score-label">${s}</div>`).join('');
+  return`<div class="score-dist"><div class="score-dist-lbl">Distribución de puntajes</div><div class="score-bars">${bars}</div><div class="score-labels">${labels}</div></div>`;
+}
+
 /* ── FILTER LOGIC ─────────────────────────────────────────────── */
 function applyTopFilters(){
   fSanatorio=document.getElementById('f-sanatorio').value;
@@ -657,6 +690,10 @@ function renderCard(san){
     prepHtml=`<div class="sc-prep"><div class="prep-hdr">NPS filtrado: ${fObra}</div><div class="prep-ind"><span class="pip" style="background:${c.bg};color:${c.color};border-color:${c.bd};font-size:15px;padding:5px 12px">${fmt(filteredNPS.nps)}<span class="pip-n">n=${filteredNPS.n}</span></span></div></div>`;
   }
 
+  // Score distribution
+  const cutRows=d.rows.filter(r=>{const dd=parseDate(r[COL.date]);return dd&&dd>=cutoff(activePeriod)});
+  const scoreDistSection=d.loaded&&cutRows.length>0?scoreDistHtml(cutRows):'';
+
   // Sparkline
   const mkey=fObra&&fObra!=='premium'&&fObra!=='noprem'?'tot':fObra==='premium'?'prem':'tot';
   const vals=monthly.map(m=>m[mkey].nps).filter(v=>v!==null);
@@ -677,6 +714,7 @@ function renderCard(san){
       ${stHtml}
     </div>
     <div class="sc-periods">${periCols}</div>
+    ${scoreDistSection}
     ${prepHtml}
     ${spkHtml}
     <div class="sc-ai">
