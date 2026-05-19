@@ -1,367 +1,343 @@
 #!/usr/bin/env python3
 """
-Red Basa · Análisis diario de calidad
-Corre a las 4am via GitHub Actions
-Lee todas las planillas → analiza con Claude → escribe resultados en Google Sheet
+Red Basa · Análisis nocturno
+Lee la planilla consolidada UNA vez, pre-calcula todo,
+y escribe una hoja de resultados plana que el tablero lee directamente.
+
+Estructura de salida (una fila por combinación centro × período × financiador):
+  centro | periodo | financiador | nps | n_nps | csat_rrhh | csat_confort | csat_adic | csat_global
+  | estrellas | n_estrellas | nps_prev | estrellas_prev | csat_prev
+  | dist_nps (JSON) | sparkline (JSON) | resumen_ia | problemas (JSON) | tags
+  | fecha_analisis
 """
 
-import os
-import json
-import csv
-import io
-import time
-import datetime
-import requests
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+import os, json, csv, io, re, datetime, urllib.request, urllib.parse, time
 
-# ── CONFIG ─────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY  = os.environ['ANTHROPIC_API_KEY']
-GOOGLE_CREDENTIALS = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+# ── CONFIG ────────────────────────────────────────────────────────────────
+CONSOLIDATED_SHEET_ID = "1mhUnoBaKmomr2HM3Ojr_-2Anf0deefnS4TWm0P_WLbc"
+RESULTS_SHEET_ID      = os.environ["RESULTS_SHEET_ID"]
+ANTHROPIC_API_KEY     = os.environ["ANTHROPIC_API_KEY"]
+GOOGLE_SA             = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
 
-CONFIG_PATH     = 'config/sanatorios.json'
-RESULTS_SHEET   = os.environ.get('RESULTS_SHEET_ID', '')
+# Columnas 0-based
+C_DATE  = 0;  C_CENTRO = 2
+C_ADM   = 3;  C_MED    = 4;  C_ENF  = 5;  C_SEG  = 6;  C_LIMP  = 7
+C_LCAL  = 8;  C_INST   = 9;  C_MENU = 10
+C_STAR  = 11; C_NPS    = 12
+C_ESP   = 15; C_SOL    = 16; C_CMT  = 17; C_PREP = 22
 
-# Columnas de encuesta (iguales en todas las planillas de Red Basa)
-COL_REC     = '¿Qué probabilidad hay de que nos recomiendes a un amigo o familiar?'
-COL_COMMENT = 'Aquí puede escribir cualquier sugerencia, felicitación o reclamo sobre tu experiencia en nuestro centro de atención:'
-COL_DATE    = 'Marca temporal'
-COL_STARS   = '¿Cuántas estrellas le darías a la clínica?  Siendo 1 la calificación más baja y 5 la calificación más alta.'
+PREMIUM_NAMES = ['Swiss Medical','OSDE','Omint','Medicus','Sanidad','Accord Salud','Galeno','Jerárquico']
+PREMIUM_KEYS  = [p.lower() for p in PREMIUM_NAMES] + ['swis medical','jerarquico']
+MIN_N = 5
 
-TODAY     = datetime.date.today()
-TODAY_STR = TODAY.strftime('%Y-%m-%d')
-MONTH_STR = TODAY.strftime('%Y-%m')
-PREV_MONTH = (TODAY.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y-%m')
-
-# ── GOOGLE SHEETS ─────────────────────────────────────────────────
-def get_sheets_service():
-    creds = service_account.Credentials.from_service_account_info(
-        GOOGLE_CREDENTIALS,
-        scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
-    return build('sheets', 'v4', credentials=creds)
-
-def fetch_sheet_csv(sheet_id, gid='0'):
-    """Fetch sheet as CSV via public export URL"""
+# ── UTILS ─────────────────────────────────────────────────────────────────
+def fetch_csv(sheet_id, gid="0"):
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    return list(csv.DictReader(io.StringIO(r.text)))
+    with urllib.request.urlopen(url) as r:
+        return list(csv.reader(io.StringIO(r.read().decode('utf-8'))))
 
-def write_results(service, sheet_id, results):
-    """Write analysis results to the results sheet"""
-    headers = [
-        'sanatorio_id', 'sanatorio_nombre', 'fecha_analisis',
-        'nps_general', 'n_general',
-        'nps_swiss', 'n_swiss',
-        'nps_osde', 'n_osde',
-        'nps_swiss_mes_actual', 'nps_swiss_mes_anterior',
-        'resumen', 'problemas', 'tags',
-        'nuevos_comentarios_negativos'
-    ]
-    # Read existing rows to check if update or insert
+def parse_date(s):
+    if not s: return None
+    m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', str(s).strip())
+    if m: return datetime.date(int(m[3]), int(m[2]), int(m[1]))
+    return None
+
+def today(): return datetime.date.today()
+
+def cutoffs():
+    t = today()
+    def safe_month(y, m, d):
+        import calendar
+        last = calendar.monthrange(y, m)[1]
+        return datetime.date(y, m, min(d, last))
+    wk  = t - datetime.timedelta(days=7)
+    mo  = safe_month(t.year if t.month>1 else t.year-1, t.month-1 if t.month>1 else 12, t.day)
+    yr  = safe_month(t.year-1, t.month, t.day)
+    pwk = t - datetime.timedelta(days=14)
+    pmo = safe_month(t.year if t.month>2 else t.year-1, (t.month-2) if t.month>2 else (12+t.month-2), t.day)
+    pyr = safe_month(t.year-2, t.month, t.day)
+    return {
+        'week':  (wk,  t),
+        'month': (mo,  t),
+        'year':  (yr,  t),
+        'prev_week':  (pwk, wk),
+        'prev_month': (pmo, mo),
+        'prev_year':  (pyr, yr),
+    }
+
+def is_premium(p):
+    if not p: return False
+    pl = p.lower().strip()
+    return any(k in pl for k in PREMIUM_KEYS)
+
+def norm_prepaga(p):
+    """Return canonical premium name or None."""
+    if not p: return None
+    pl = p.lower().strip()
+    for name in PREMIUM_NAMES:
+        if name.lower() in pl: return name
+    if 'swis' in pl: return 'Swiss Medical'
+    if 'jerarquico' in pl or 'jerárquico' in pl: return 'Jerárquico'
+    return None
+
+TEXT_MAP = {'muy bueno':5,'muy malo':1,'bueno':4,'malo':2,'regular':3}
+def t2n(v):
+    if not v: return None
+    return TEXT_MAP.get(str(v).lower().strip())
+
+def to_num(v):
+    try: return float(str(v).replace(',','.'))
+    except: return None
+
+def invalid(v):
+    if not v: return True
+    s = str(v).lower().strip()
+    return not s or any(x in s for x in ['no tengo','no aplica','no me corresponde','no opinion'])
+
+def safe(r, i):
+    return r[i] if i < len(r) else ''
+
+# ── METRIC CALCS ──────────────────────────────────────────────────────────
+def calc_nps(rows):
+    vals = [v for r in rows for v in [to_num(safe(r,C_NPS))] if v is not None and 1<=v<=10]
+    if len(vals) < MIN_N: return None, len(vals), None, None
+    p = sum(1 for v in vals if v>=9) / len(vals)
+    d = sum(1 for v in vals if v<=6) / len(vals)
+    return round((p-d)*100), len(vals), round(p*100,1), round(d*100,1)
+
+def calc_csat_col(rows, cols, use_text):
+    vals = []
+    for r in rows:
+        for c in cols:
+            v = safe(r,c)
+            if invalid(v): continue
+            n = t2n(v) if use_text else to_num(v)
+            if n is not None and 1<=n<=5: vals.append(n)
+    if len(vals) < MIN_N: return None
+    return round(sum(vals)/len(vals), 2)
+
+def calc_csat(rows):
+    rrhh = calc_csat_col(rows, [C_ADM,C_MED,C_ENF,C_SEG,C_LIMP], True)
+    conf = calc_csat_col(rows, [C_LCAL,C_INST,C_MENU], False)
+    adic = calc_csat_col(rows, [C_ESP,C_SOL], True)
+    parts = [v for v in [rrhh,conf,adic] if v is not None]
+    glob = round(sum(parts)/len(parts),2) if parts else None
+    return rrhh, conf, adic, glob
+
+def calc_stars(rows):
+    vals = [v for r in rows for v in [to_num(safe(r,C_STAR))] if v is not None and 1<=v<=5]
+    if len(vals) < MIN_N: return None, len(vals)
+    return round(sum(vals)/len(vals),2), len(vals)
+
+def calc_dist(rows):
+    """Distribution of NPS scores 1-10."""
+    counts = {i:0 for i in range(1,11)}
+    for r in rows:
+        v = to_num(safe(r,C_NPS))
+        if v is not None and 1<=v<=10:
+            counts[int(v)] += 1
+    return counts
+
+def calc_sparkline(rows):
+    """Monthly NPS/stars for last 18 months. Returns list of {m, nps, stars}."""
+    t = today()
+    result = []
+    for i in range(17,-1,-1):
+        yr  = t.year  + (t.month - 1 - i) // 12 * (1 if (t.month-1-i)>=0 else -1)
+        mo  = ((t.month - 1 - i) % 12) + 1
+        yr  = t.year + ((t.month - 1 - i) // 12)
+        if t.month - 1 - i < 0:
+            yr = t.year - (-(t.month - 1 - i) + 11) // 12
+            mo = 12 - (-(t.month - 1 - i) - 1) % 12
+        label = f"{yr}-{mo:02d}"
+        mrows = [r for r in rows if parse_date(safe(r,C_DATE)) and
+                 parse_date(safe(r,C_DATE)).year==yr and parse_date(safe(r,C_DATE)).month==mo]
+        nps_v, n_nps, *_ = calc_nps(mrows)
+        st_v, n_st       = calc_stars(mrows)
+        _, _, _, csat_v  = calc_csat(mrows)
+        result.append({"m": label, "nps": nps_v, "stars": st_v, "csat": csat_v, "n": len(mrows)})
+    return result
+
+# ── FILTER BY DATE ────────────────────────────────────────────────────────
+def period_rows(rows, start, end):
+    return [r for r in rows if parse_date(safe(r,C_DATE)) and start <= parse_date(safe(r,C_DATE)) <= end]
+
+# ── FINANCIADOR GROUPS ────────────────────────────────────────────────────
+def financiador_rows(rows, fin):
+    if fin == 'TODAS':      return rows
+    if fin == 'PREMIUM':    return [r for r in rows if is_premium(safe(r,C_PREP))]
+    if fin == 'NO_PREMIUM': return [r for r in rows if safe(r,C_PREP) and not is_premium(safe(r,C_PREP))]
+    if fin == 'SIN_DATO':   return [r for r in rows if not safe(r,C_PREP)]
+    # Individual premium name
+    return [r for r in rows if norm_prepaga(safe(r,C_PREP)) == fin]
+
+FINANCIADORES = ['TODAS','PREMIUM','NO_PREMIUM','SIN_DATO'] + PREMIUM_NAMES
+
+# ── GOOGLE AUTH ───────────────────────────────────────────────────────────
+def get_token():
+    import base64
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+    sa = GOOGLE_SA
+    now = int(time.time())
+    hdr = base64.urlsafe_b64encode(json.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b'=').decode()
+    pay = base64.urlsafe_b64encode(json.dumps({
+        "iss": sa["client_email"],
+        "scope": "https://www.googleapis.com/auth/spreadsheets",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": now, "exp": now+3600
+    }).encode()).rstrip(b'=').decode()
+    pk = serialization.load_pem_private_key(sa["private_key"].encode(), password=None, backend=default_backend())
+    sig = base64.urlsafe_b64encode(pk.sign(f"{hdr}.{pay}".encode(), padding.PKCS1v15(), hashes.SHA256())).rstrip(b'=').decode()
+    jwt = f"{hdr}.{pay}.{sig}"
+    data = urllib.parse.urlencode({"grant_type":"urn:ietf:params:oauth:grant-type:jwt-bearer","assertion":jwt}).encode()
+    with urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/token", data=data)) as r:
+        return json.loads(r.read())["access_token"]
+
+def write_sheet(token, values):
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('Hoja 1!A1')}?valueInputOption=RAW"
+    body = json.dumps({"values": values}).encode()
+    req = urllib.request.Request(url, data=body, method='PUT')
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+def clear_sheet(token):
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote('Hoja 1!A1:Z2000')}:clear"
+    req = urllib.request.Request(url, data=b'{}', method='POST')
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req) as r: pass
+
+# ── CLAUDE AI ─────────────────────────────────────────────────────────────
+def analyze_with_ai(centro, neg_comments, nps_val, csat_val, stars_val):
+    if not neg_comments:
+        return "Sin comentarios negativos en el período.", "[]", ""
+    prompt = f"""Sos analista de calidad de atención médica para {centro}.
+
+Métricas del último mes: NPS={nps_val}, CSAT={csat_val}, Estrellas={stars_val}
+
+Comentarios negativos (NPS≤6 o estrellas≤2):
+{chr(10).join(f'- {c}' for c in neg_comments[:30])}
+
+Respondé SOLO con JSON (sin markdown):
+{{"resumen":"2-3 oraciones sobre los problemas principales","problemas":[{{"tema":"...","frecuencia":"alta|media|baja","ejemplo":"..."}}],"tags":["tag1","tag2","tag3"]}}"""
+
+    data = json.dumps({"model":"claude-sonnet-4-20250514","max_tokens":800,
+                       "messages":[{"role":"user","content":prompt}]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=data)
+    req.add_header('x-api-key', ANTHROPIC_API_KEY)
+    req.add_header('anthropic-version', '2023-06-01')
+    req.add_header('content-type', 'application/json')
+    with urllib.request.urlopen(req) as r:
+        resp = json.loads(r.read())
+    text = resp['content'][0]['text'].strip()
     try:
-        existing = service.spreadsheets().values().get(
-            spreadsheetId=sheet_id,
-            range='A:A'
-        ).execute().get('values', [])
-        existing_ids = [r[0] for r in existing[1:]] if len(existing) > 1 else []
+        p = json.loads(text)
+        return p.get('resumen',''), json.dumps(p.get('problemas',[]),ensure_ascii=False), ','.join(p.get('tags',[]))
     except:
-        existing_ids = []
+        return text[:300], '[]', ''
 
-    for result in results:
-        row = [
-            result.get('sanatorio_id', ''),
-            result.get('sanatorio_nombre', ''),
-            TODAY_STR,
-            str(result.get('nps_general', '')),
-            str(result.get('n_general', '')),
-            str(result.get('nps_swiss', '')),
-            str(result.get('n_swiss', '')),
-            str(result.get('nps_osde', '')),
-            str(result.get('n_osde', '')),
-            str(result.get('nps_swiss_mes_actual', '')),
-            str(result.get('nps_swiss_mes_anterior', '')),
-            result.get('resumen', ''),
-            json.dumps(result.get('problemas', []), ensure_ascii=False),
-            ','.join(result.get('tags', [])),
-            result.get('nuevos_comentarios_negativos', ''),
-        ]
-
-        if result['sanatorio_id'] in existing_ids:
-            # Update existing row
-            row_idx = existing_ids.index(result['sanatorio_id']) + 2  # +2 for header
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=f'A{row_idx}',
-                valueInputOption='RAW',
-                body={'values': [row]}
-            ).execute()
-        else:
-            # Append new row
-            service.spreadsheets().values().append(
-                spreadsheetId=sheet_id,
-                range='A1',
-                valueInputOption='RAW',
-                insertDataOption='INSERT_ROWS',
-                body={'values': [row] if existing_ids else [headers, row]}
-            ).execute()
-
-# ── NPS CALC ──────────────────────────────────────────────────────
-def calc_nps(rows, obra_filter=None, obra_col=None):
-    filtered = rows
-    if obra_filter and obra_col:
-        filtered = [r for r in rows
-                    if obra_filter.lower() in (r.get(obra_col, '') or '').lower()]
-    recs = []
-    for r in filtered:
-        try:
-            v = float(r.get(COL_REC, ''))
-            if 0 <= v <= 10:
-                recs.append(v)
-        except (ValueError, TypeError):
-            pass
-    if not recs:
-        return {'nps': None, 'n': 0}
-    p = sum(1 for v in recs if v >= 9) / len(recs) * 100
-    d = sum(1 for v in recs if v <= 6) / len(recs) * 100
-    return {'nps': round(p - d), 'n': len(recs)}
-
-def get_month_rows(rows, month_str, obra_filter=None, obra_col=None):
-    """Filter rows by month (YYYY-MM)"""
-    result = []
-    for r in rows:
-        date_str = r.get(COL_DATE, '')
-        if not date_str:
-            continue
-        # Parse DD/MM/YYYY HH:MM:SS
-        parts = date_str.replace('/', ' ').replace(':', ' ').split()
-        if len(parts) >= 3:
-            try:
-                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
-                row_month = f"{y:04d}-{m:02d}"
-                if row_month == month_str:
-                    if obra_filter and obra_col:
-                        if obra_filter.lower() in (r.get(obra_col, '') or '').lower():
-                            result.append(r)
-                    else:
-                        result.append(r)
-            except (ValueError, IndexError):
-                pass
-    return result
-
-def get_new_rows_since_yesterday(rows, obra_filter=None, obra_col=None):
-    """Get rows added in the last 24 hours"""
-    yesterday = TODAY - datetime.timedelta(days=1)
-    result = []
-    for r in rows:
-        date_str = r.get(COL_DATE, '')
-        if not date_str:
-            continue
-        parts = date_str.replace('/', ' ').replace(':', ' ').split()
-        if len(parts) >= 3:
-            try:
-                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
-                row_date = datetime.date(y, m, d)
-                if row_date >= yesterday:
-                    if obra_filter and obra_col:
-                        if obra_filter.lower() in (r.get(obra_col, '') or '').lower():
-                            result.append(r)
-                    else:
-                        result.append(r)
-            except (ValueError, IndexError):
-                pass
-    return result
-
-# ── CLAUDE ANALYSIS ───────────────────────────────────────────────
-def analyze_with_claude(sanatorio_name, negative_comments, new_count):
-    """Call Claude API to analyze comments and generate structured summary"""
-    if not negative_comments:
-        return {
-            'resumen': 'Sin comentarios negativos nuevos en el período analizado.',
-            'problemas': [],
-            'tags': ['Sin incidencias'],
-        }
-
-    comments_text = '\n\n'.join([
-        f"[{i+1}] rec={c.get('rec','?')}/10 | {c.get('fecha','?')}\n\"{c.get('texto','')}\""
-        for i, c in enumerate(negative_comments[:30])  # max 30
-    ])
-
-    prompt = f"""Analizá estos comentarios negativos de pacientes del {sanatorio_name}.
-
-{comments_text}
-
-Respondé SOLO en JSON válido sin texto extra ni markdown:
-{{
-  "resumen": "2 oraciones ejecutivas sobre los principales problemas",
-  "problemas": [
-    {{"tema": "string corto", "descripcion": "1 oración", "severidad": "critico|alto|moderado", "menciones": number}}
-  ],
-  "tags": ["tag1", "tag2", "tag3"]
-}}
-
-Ordená problemas por menciones descendente. Máximo 5 problemas. Tags: máximo 3, palabras clave del problema principal."""
-
-    headers = {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-    }
-    body = {
-        'model': 'claude-sonnet-4-20250514',
-        'max_tokens': 800,
-        'messages': [{'role': 'user', 'content': prompt}]
-    }
-
-    try:
-        r = requests.post('https://api.anthropic.com/v1/messages',
-                          headers=headers, json=body, timeout=60)
-        r.raise_for_status()
-        text = r.json()['content'][0]['text']
-        text = text.replace('```json', '').replace('```', '').strip()
-        return json.loads(text)
-    except Exception as e:
-        print(f"  ⚠ Claude API error: {e}")
-        return {
-            'resumen': f'Error al analizar comentarios: {str(e)[:100]}',
-            'problemas': [],
-            'tags': [],
-        }
-
-# ── MAIN ──────────────────────────────────────────────────────────
+# ── MAIN ──────────────────────────────────────────────────────────────────
 def main():
-    print(f"\n{'='*60}")
-    print(f"Red Basa · Análisis diario · {TODAY_STR}")
-    print(f"{'='*60}\n")
+    print("=== Red Basa · Análisis nocturno ===")
+    print(f"Fecha: {today()}")
 
-    # Load config
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
+    print("\n1. Descargando planilla consolidada...")
+    raw = fetch_csv(CONSOLIDATED_SHEET_ID)
+    all_rows = [r for r in raw[1:] if r and len(r)>C_CENTRO and safe(r,C_DATE) and safe(r,C_CENTRO)]
+    print(f"   {len(all_rows)} filas cargadas")
 
-    sanatorios = config.get('sanatorios', [])
-    results_sheet = RESULTS_SHEET or config.get('results_sheet_id', '')
+    cuts = cutoffs()
+    centros = sorted(set(safe(r,C_CENTRO).strip() for r in all_rows))
+    print(f"   Centros: {centros}")
 
-    if not results_sheet or results_sheet == 'COMPLETAR_DESPUES_DE_CREAR_SHEET':
-        print("⚠ RESULTS_SHEET_ID no configurado. Configurá el ID de la hoja de resultados.")
-        return
+    HEADER = [
+        "centro","periodo","financiador",
+        "nps","n_nps","pct_promotores","pct_detractores",
+        "csat_rrhh","csat_confort","csat_adic","csat_global",
+        "estrellas","n_estrellas",
+        "nps_prev","csat_prev","estrellas_prev",
+        "dist_nps","sparkline",
+        "resumen_ia","problemas_ia","tags_ia",
+        "fecha_analisis"
+    ]
+    rows_out = [HEADER]
 
-    print(f"📋 Procesando {len(sanatorios)} sanatorios...\n")
+    PERIODOS = ['week','month','year']
 
-    sheets_service = get_sheets_service()
-    all_results = []
+    print("\n2. Pre-calculando métricas...")
+    for centro in centros:
+        print(f"   → {centro}")
+        crows = [r for r in all_rows if safe(r,C_CENTRO).strip()==centro]
 
-    for san in sanatorios:
-        if not san.get('active', True):
-            print(f"  ⏭ {san['name']} (inactivo)")
-            continue
+        # Sparkline (calculado una sola vez por centro, sobre todos los datos)
+        sparkline = calc_sparkline(crows)
 
-        print(f"  🏥 {san['name']}...")
+        # AI analysis (solo para periodo month, financiador TODAS)
+        month_rows = period_rows(crows, *cuts['month'])
+        neg_cmts = [safe(r,C_CMT) for r in month_rows
+                    if not invalid(safe(r,C_CMT)) and
+                    ((to_num(safe(r,C_NPS)) or 99) <= 6 or (to_num(safe(r,C_STAR)) or 99) <= 2)]
+        nps_m, n_m, *_ = calc_nps(month_rows)
+        _, _, _, csat_m = calc_csat(month_rows)
+        st_m, _         = calc_stars(month_rows)
+        resumen, problemas, tags = analyze_with_ai(centro, neg_cmts, nps_m, csat_m, st_m)
 
-        try:
-            rows = fetch_sheet_csv(san['sheetId'], san.get('gid', '0'))
-            obra_col = san.get('obraCol', 'Obra social:')
+        for periodo in PERIODOS:
+            start, end       = cuts[periodo]
+            prev_start, prev_end = cuts[f'prev_{periodo}']
+            p_rows  = period_rows(crows, start, end)
+            pp_rows = period_rows(crows, prev_start, prev_end)
 
-            # NPS calculations
-            total = calc_nps(rows)
-            swiss = calc_nps(rows, 'swiss', obra_col)
-            osde  = calc_nps(rows, 'osde',  obra_col)
+            # Dist NPS (solo una vez por periodo, con TODAS)
+            dist = calc_dist(p_rows)
 
-            # Monthly NPS
-            curr_month_rows = get_month_rows(rows, MONTH_STR, 'swiss', obra_col)
-            prev_month_rows = get_month_rows(rows, PREV_MONTH, 'swiss', obra_col)
-            nps_curr = calc_nps(curr_month_rows)
-            nps_prev = calc_nps(prev_month_rows)
+            for fin in FINANCIADORES:
+                f_rows  = financiador_rows(p_rows, fin)
+                fp_rows = financiador_rows(pp_rows, fin)
 
-            # New comments since yesterday (negative)
-            new_rows = get_new_rows_since_yesterday(rows, 'swiss', obra_col)
-            new_neg = [r for r in new_rows
-                       if r.get(COL_COMMENT, '').strip()
-                       and float(r.get(COL_REC, '5') or '5') <= 6]
+                nps_v, n_nps, pct_p, pct_d = calc_nps(f_rows)
+                rrhh, conf, adic, glob      = calc_csat(f_rows)
+                st_v, n_st                  = calc_stars(f_rows)
 
-            comments_for_analysis = [
-                {
-                    'texto': r.get(COL_COMMENT, ''),
-                    'rec': r.get(COL_REC, ''),
-                    'fecha': r.get(COL_DATE, '')[:10],
-                }
-                for r in new_neg
-            ]
+                nps_prev, *_  = calc_nps(fp_rows)
+                _, _, _, cp   = calc_csat(fp_rows)
+                st_prev, _    = calc_stars(fp_rows)
 
-            # Use last 30 days if no new comments today
-            if not comments_for_analysis:
-                cutoff = TODAY - datetime.timedelta(days=30)
-                recent_neg = []
-                for r in rows:
-                    try:
-                        parts = r.get(COL_DATE, '').replace('/', ' ').replace(':', ' ').split()
-                        if len(parts) >= 3:
-                            row_date = datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
-                            if row_date >= cutoff:
-                                rec = float(r.get(COL_REC, '5') or '5')
-                                if rec <= 6 and r.get(COL_COMMENT, '').strip():
-                                    obra = (r.get(obra_col, '') or '').lower()
-                                    if 'swiss' in obra:
-                                        recent_neg.append({
-                                            'texto': r.get(COL_COMMENT, ''),
-                                            'rec': r.get(COL_REC, ''),
-                                            'fecha': r.get(COL_DATE, '')[:10],
-                                        })
-                    except:
-                        pass
-                comments_for_analysis = recent_neg[-20:]
+                rows_out.append([
+                    centro, periodo, fin,
+                    nps_v  if nps_v  is not None else '',
+                    n_nps,
+                    pct_p  if pct_p  is not None else '',
+                    pct_d  if pct_d  is not None else '',
+                    rrhh   if rrhh   is not None else '',
+                    conf   if conf   is not None else '',
+                    adic   if adic   is not None else '',
+                    glob   if glob   is not None else '',
+                    st_v   if st_v   is not None else '',
+                    n_st,
+                    nps_prev  if nps_prev  is not None else '',
+                    cp        if cp        is not None else '',
+                    st_prev   if st_prev   is not None else '',
+                    json.dumps(dist, ensure_ascii=False)   if fin=='TODAS' else '',
+                    json.dumps(sparkline, ensure_ascii=False) if fin=='TODAS' and periodo=='month' else '',
+                    resumen   if fin=='TODAS' and periodo=='month' else '',
+                    problemas if fin=='TODAS' and periodo=='month' else '',
+                    tags      if fin=='TODAS' and periodo=='month' else '',
+                    today().isoformat(),
+                ])
 
-            # Analyze with Claude
-            print(f"     → {len(rows)} filas · Swiss n={swiss['n']} · {len(comments_for_analysis)} comentarios a analizar")
-            ai = analyze_with_claude(san['name'], comments_for_analysis, len(new_neg))
-            time.sleep(1)  # Rate limit
+        print(f"     {len(PERIODOS)*len(FINANCIADORES)} filas generadas")
 
-            result = {
-                'sanatorio_id':            san['id'],
-                'sanatorio_nombre':        san['name'],
-                'nps_general':             total['nps'],
-                'n_general':               total['n'],
-                'nps_swiss':               swiss['nps'],
-                'n_swiss':                 swiss['n'],
-                'nps_osde':                osde['nps'],
-                'n_osde':                  osde['n'],
-                'nps_swiss_mes_actual':    nps_curr['nps'],
-                'nps_swiss_mes_anterior':  nps_prev['nps'],
-                'resumen':                 ai.get('resumen', ''),
-                'problemas':               ai.get('problemas', []),
-                'tags':                    ai.get('tags', []),
-                'nuevos_comentarios_negativos': str(len(new_neg)),
-            }
-            all_results.append(result)
-
-            nps_str = f"NPS Swiss: {swiss['nps']:+d}" if swiss['nps'] is not None else "NPS Swiss: —"
-            print(f"     ✓ {nps_str} · {ai.get('resumen','')[:80]}…\n")
-
-        except Exception as e:
-            print(f"     ✗ Error: {e}\n")
-            all_results.append({
-                'sanatorio_id':   san['id'],
-                'sanatorio_nombre': san['name'],
-                'nps_general': '', 'n_general': '',
-                'nps_swiss': '', 'n_swiss': '',
-                'nps_osde': '', 'n_osde': '',
-                'nps_swiss_mes_actual': '', 'nps_swiss_mes_anterior': '',
-                'resumen': f'Error al cargar datos: {str(e)[:200]}',
-                'problemas': [], 'tags': ['Error'],
-                'nuevos_comentarios_negativos': '0',
-            })
-
-    # Write to results sheet
-    print(f"📝 Escribiendo resultados en Google Sheets…")
-    try:
-        write_results(sheets_service, results_sheet, all_results)
-        print(f"✓ Resultados actualizados en {results_sheet}\n")
-    except Exception as e:
-        print(f"✗ Error escribiendo resultados: {e}\n")
-
-    print(f"{'='*60}")
-    print(f"Análisis completado · {len(all_results)} sanatorios procesados")
-    print(f"{'='*60}\n")
+    print(f"\n3. Escribiendo {len(rows_out)-1} filas en Google Sheets...")
+    token = get_token()
+    clear_sheet(token)
+    write_sheet(token, rows_out)
+    print("   ✓ Listo")
+    print(f"\nTotal: {len(centros)} centros × {len(PERIODOS)} períodos × {len(FINANCIADORES)} financiadores = {len(rows_out)-1} filas")
 
 if __name__ == '__main__':
     main()
