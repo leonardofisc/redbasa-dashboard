@@ -399,6 +399,16 @@ async function loadData() {
         csat_confort: parseFloat(get('csat_confort')) || null,
         csat_adic:    parseFloat(get('csat_adic'))    || null,
         csat_global:  parseFloat(get('csat_global'))  || null,
+        csat_adm:     parseFloat(get('csat_adm'))     || null,
+        csat_med:     parseFloat(get('csat_med'))     || null,
+        csat_enf:     parseFloat(get('csat_enf'))     || null,
+        csat_seg:     parseFloat(get('csat_seg'))     || null,
+        csat_limp:    parseFloat(get('csat_limp'))    || null,
+        csat_limp_cal:parseFloat(get('csat_limp_cal'))|| null,
+        csat_inst:    parseFloat(get('csat_inst'))    || null,
+        csat_menu:    parseFloat(get('csat_menu'))    || null,
+        csat_espera:  parseFloat(get('csat_espera'))  || null,
+        csat_solucion:parseFloat(get('csat_solucion'))|| null,
         estrellas:    parseFloat(get('estrellas'))    || null,
         n_estrellas:  parseInt(get('n_estrellas'))    || 0,
         nps_prev:     parseFloat(get('nps_prev'))     || null,
@@ -652,30 +662,46 @@ function renderCard(centro) {
 
   } else if (activeReport==='csat') {
     const row = curRow;
-    const csatBlocks = [
-      { title:'Recurso Humano', key:'csat_rrhh', items:[
-        {label:'Admisionistas'}, {label:'Médicos'}, {label:'Enfermeros'},
-        {label:'Seguridad'}, {label:'Limp. personal'}
-      ]},
-      { title:'Confort', key:'csat_confort', items:[
-        {label:'Limp. centro'}, {label:'Instalaciones'}, {label:'Menú'}
-      ]},
-      { title:'Atención', key:'csat_adic', items:[
-        {label:'Tiempo espera'}, {label:'Solución inconv.'}
-      ]},
+    const CSAT_DIMS = [
+      { label:'Admisionistas',    key:'csat_adm',      block:'RR.HH.' },
+      { label:'Médicos',          key:'csat_med',      block:'RR.HH.' },
+      { label:'Enfermeros/as',    key:'csat_enf',      block:'RR.HH.' },
+      { label:'Seguridad',        key:'csat_seg',      block:'RR.HH.' },
+      { label:'Limp. personal',   key:'csat_limp',     block:'RR.HH.' },
+      { label:'Limp. centro',     key:'csat_limp_cal', block:'Confort' },
+      { label:'Instalaciones',    key:'csat_inst',     block:'Confort' },
+      { label:'Menú y comidas',   key:'csat_menu',     block:'Confort' },
+      { label:'Tiempo de espera', key:'csat_espera',   block:'Atención' },
+      { label:'Solución inconv.', key:'csat_solucion', block:'Atención' },
     ];
-    reportSection = `<div class="sc-csat">` + csatBlocks.map(block => {
-      const v = row?.[block.key] ?? null;
-      const cls = colorCls(v);
-      const pct = v!==null&&!isNaN(v) ? ((v-1)/4*100).toFixed(0) : 0;
-      const color = cls==='good'?'#0d8a80':cls==='warn'?'#b07a00':cls==='bad'?'var(--red)':'#b0c8d4';
-      return `<div class="csat-block">
-        <div class="csat-block-title">${block.title}</div>
-        <div class="csat-row">
-          <div class="csat-row-label">Promedio bloque</div>
+
+    const blocks = ['RR.HH.','Confort','Atención'];
+    const blockKeys = { 'RR.HH.':'csat_rrhh', 'Confort':'csat_confort', 'Atención':'csat_adic' };
+
+    reportSection = `<div class="sc-csat">` + blocks.map(block => {
+      const dims = CSAT_DIMS.filter(d => d.block === block);
+      const blockVal = row?.[blockKeys[block]] ?? null;
+      const bCls = colorCls(blockVal);
+      const bColor = bCls==='good'?'#0d8a80':bCls==='warn'?'#b07a00':bCls==='bad'?'var(--red)':'#b0c8d4';
+
+      const dimRows = dims.map(d => {
+        const v = row?.[d.key] ?? null;
+        const cls = colorCls(v);
+        const pct = v!==null&&!isNaN(v) ? ((v-1)/4*100).toFixed(0) : 0;
+        const color = cls==='good'?'#0d8a80':cls==='warn'?'#b07a00':cls==='bad'?'var(--red)':'#b0c8d4';
+        return `<div class="csat-row">
+          <div class="csat-row-label">${d.label}</div>
           <div class="csat-bar-bg"><div class="csat-bar-fill ${cls}" style="width:${pct}%"></div></div>
           <div class="csat-row-val" style="color:${color}">${v!==null&&!isNaN(v)?parseFloat(v).toFixed(1):'—'}</div>
+        </div>`;
+      }).join('');
+
+      return `<div class="csat-block">
+        <div class="csat-block-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>${block}</span>
+          <span style="font-size:12px;font-weight:700;color:${bColor}">${blockVal!==null&&!isNaN(blockVal)?'Prom. '+parseFloat(blockVal).toFixed(1):''}</span>
         </div>
+        ${dimRows}
       </div>`;
     }).join('') + `</div>`;
 
