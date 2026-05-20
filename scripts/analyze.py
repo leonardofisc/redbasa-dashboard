@@ -282,6 +282,147 @@ def clear_sheet():
     req.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req) as r: pass
 
+# ── COMENTARIOS NEGATIVOS ─────────────────────────────────────────────────
+NEGATIVE_SHEET_NAME = "Comentarios Negativos"
+NEGATIVE_COMMENTS_HEADER = [
+    "id", "fecha_encuesta", "centro", "financiador", "nps",
+    "comentario", "fecha_deteccion", "notificado_dm", "fecha_notificacion"
+]
+NPS_NEGATIVO_UMBRAL = 4   # NPS ≤ 4
+FECHA_INICIO_ALERTAS = datetime.date(2025, 5, 1)
+
+def ensure_negative_sheet(token):
+    """Create the 'Comentarios Negativos' sheet if it doesn't exist."""
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}"
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req) as r:
+        meta = json.loads(r.read())
+    sheets = [s['properties']['title'] for s in meta.get('sheets', [])]
+    if NEGATIVE_SHEET_NAME not in sheets:
+        body = json.dumps({"requests": [{"addSheet": {"properties": {"title": NEGATIVE_SHEET_NAME}}}]}).encode()
+        req2 = urllib.request.Request(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}:batchUpdate",
+            data=body, method='POST')
+        req2.add_header("Authorization", f"Bearer {token}")
+        req2.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(req2) as r:
+            json.loads(r.read())
+        print(f"   ✓ Hoja '{NEGATIVE_SHEET_NAME}' creada")
+        # Write header
+        write_negative_rows([NEGATIVE_COMMENTS_HEADER], token, overwrite_range="'Comentarios Negativos'!A1:I1")
+    else:
+        print(f"   ✓ Hoja '{NEGATIVE_SHEET_NAME}' ya existe")
+
+def read_existing_negative_comments(token):
+    """Read existing negative comments. Returns list of dicts and set of existing keys."""
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote(NEGATIVE_SHEET_NAME + '!A1:I10000')}"
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+        rows = data.get("values", [])
+        if len(rows) < 2:
+            return [], set()
+        header = rows[0]
+        records = []
+        keys = set()
+        for row in rows[1:]:
+            padded = row + [''] * (len(header) - len(row))
+            rec = dict(zip(header, padded))
+            records.append(rec)
+            # Key: fecha_encuesta + centro + primeros 80 chars del comentario
+            k = f"{rec.get('fecha_encuesta','')}|{rec.get('centro','')}|{rec.get('comentario','')[:80]}"
+            keys.add(k)
+        return records, keys
+    except Exception as e:
+        print(f"   ⚠ Error leyendo comentarios negativos: {e}")
+        return [], set()
+
+def write_negative_rows(values, token, overwrite_range=None):
+    """Append rows to the Comentarios Negativos sheet."""
+    if overwrite_range:
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{urllib.parse.quote(overwrite_range)}?valueInputOption=RAW"
+        method = 'PUT'
+    else:
+        range_name = urllib.parse.quote(f"{NEGATIVE_SHEET_NAME}!A1")
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{RESULTS_SHEET_ID}/values/{range_name}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+        method = 'POST'
+    body = json.dumps({"values": values}).encode()
+    req = urllib.request.Request(url, data=body, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+NEGATIVE_KEYWORDS = [
+    'mal', 'malo', 'mala', 'pésimo', 'pésima', 'terrible', 'horrible',
+    'demora', 'espera', 'tardaron', 'tarde', 'lento', 'lenta',
+    'maltrato', 'maltrataron', 'grosero', 'grosera', 'descortés',
+    'sucio', 'sucia', 'mugre', 'inmundo', 'desastre',
+    'no atienden', 'no atendieron', 'ignoraron', 'abandonaron',
+    'error', 'equivocaron', 'equivocación', 'negligencia', 'negligente',
+    'queja', 'reclamo', 'indignante', 'vergüenza', 'inaceptable',
+    'no funciona', 'roto', 'falta', 'faltan', 'no hay',
+]
+
+def is_negative_comment(row):
+    """Return True if row has NPS ≤ 4 OR clearly negative comment text."""
+    nps = to_num(safe(row, C_NPS))
+    if nps is not None and nps <= NPS_NEGATIVO_UMBRAL:
+        return True
+    cmt = safe(row, C_CMT).lower().strip()
+    if not cmt or len(cmt) < 10:
+        return False
+    return any(kw in cmt for kw in NEGATIVE_KEYWORDS)
+
+def process_negative_comments(all_rows, token):
+    """Detect new negative comments since FECHA_INICIO_ALERTAS and append to sheet."""
+    print(f"\n5. Procesando comentarios negativos (desde {FECHA_INICIO_ALERTAS})...")
+    ensure_negative_sheet(token)
+    _, existing_keys = read_existing_negative_comments(token)
+
+    new_rows = []
+    today_str = today().isoformat()
+    counter_start = len(existing_keys) + 1
+
+    for row in all_rows:
+        fecha = parse_date(safe(row, C_DATE))
+        if not fecha or fecha < FECHA_INICIO_ALERTAS:
+            continue
+        if not is_negative_comment(row):
+            continue
+        cmt = safe(row, C_CMT).strip()
+        if not cmt:
+            continue
+        centro   = safe(row, C_CENTRO).strip()
+        fin      = norm_prepaga(safe(row, C_PREP)) or ('PREMIUM' if is_premium(safe(row, C_PREP)) else ('NO PREMIUM' if safe(row, C_PREP) else 'SIN DATO'))
+        nps_val  = to_num(safe(row, C_NPS)) or ''
+        key      = f"{fecha.isoformat()}|{centro}|{cmt[:80]}"
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        row_id = f"NC-{counter_start:04d}"
+        counter_start += 1
+        new_rows.append([
+            row_id,
+            fecha.isoformat(),
+            centro,
+            fin,
+            nps_val,
+            cmt,
+            today_str,   # fecha_deteccion
+            '',          # notificado_dm
+            '',          # fecha_notificacion
+        ])
+
+    if new_rows:
+        write_negative_rows(new_rows, token)
+        print(f"   ✓ {len(new_rows)} comentarios nuevos agregados")
+    else:
+        print(f"   ✓ Sin comentarios nuevos")
+
 # ── CLAUDE AI ─────────────────────────────────────────────────────────────
 def analyze_with_ai(centro, neg_comments, nps_val, csat_val, stars_val):
     if not neg_comments:
@@ -543,6 +684,10 @@ def main():
     write_sheet(rows_out)
     print("   ✓ Listo")
     print(f"\nTotal: {len(centros)} centros × {len(PERIODOS)} períodos × {len(FINANCIADORES)} financiadores = {len(rows_out)-1} filas")
+
+    # ── Comentarios negativos
+    token = get_token()
+    process_negative_comments(all_rows, token)
 
 if __name__ == '__main__':
     main()
