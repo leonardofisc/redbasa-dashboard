@@ -354,6 +354,7 @@ async function doLogin() {
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
     loadData();
+    showFooter();
   } else {
     document.getElementById('login-err').textContent='Contraseña incorrecta';
     document.getElementById('pass-input').value='';
@@ -891,28 +892,17 @@ if(sessionStorage.getItem('rb-auth')==='1') loadData();
   border-top:1px solid var(--border);
   margin-top:8px;
 }
-#footer a { color:var(--muted); text-decoration:none; }
 </style>
 <div id="footer" style="display:none">
-  RED BASA · Tablero de Control · v5 · 
-  <span id="footer-date"></span>
+  RED BASA · Tablero de Control · v5 · <span id="footer-date"></span>
 </div>
 <script>
-  // Show footer only when logged in
-  if(sessionStorage.getItem('rb-auth')==='1'){
-    document.getElementById('footer').style.display='block';
-    document.getElementById('footer-date').textContent = 
-      new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
-  }
-  const _origLogin = doLogin;
-  // Reveal footer after login
-  const _origLoad = loadData;
-  async function loadData(){
-    await _origLoad();
-    document.getElementById('footer').style.display='block';
-    document.getElementById('footer-date').textContent =
-      new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
-  }
+function showFooter() {
+  document.getElementById('footer').style.display='block';
+  document.getElementById('footer-date').textContent =
+    new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
+}
+if(sessionStorage.getItem('rb-auth')==='1') showFooter();
 </script>
 </body>
 </html>
