@@ -31,7 +31,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
   background:#fff; border-radius:16px; padding:40px 48px;
   width:360px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3);
 }
-.login-box .logo { font-family:'Nunito',sans-serif; font-size:28px; font-weight:800; color:var(--navy); margin-bottom:4px; }
+.login-box .logo { font-family:'Nunito',sans-serif; font-size:28px; font-weight:800; color:var(--turquesa); margin-bottom:4px; letter-spacing:.04em; }
 .login-box .logo span { color:var(--turquesa); }
 .login-box p { color:var(--muted); font-size:14px; margin-bottom:28px; }
 .login-box input {
@@ -55,8 +55,8 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
   height:56px; position:sticky; top:0; z-index:100;
   box-shadow:0 2px 12px rgba(0,0,0,.2);
 }
-.tb-logo { font-family:'Nunito',sans-serif; font-size:20px; font-weight:800; color:#fff; margin-right:8px; }
-.tb-logo span { color:var(--turquesa); }
+.tb-logo { font-family:'Nunito',sans-serif; font-size:20px; font-weight:800; color:#fff; margin-right:8px; letter-spacing:.04em; }
+.tb-logo span { color:#fff; }
 .report-pills { display:flex; gap:4px; background:rgba(255,255,255,.1); border-radius:10px; padding:4px; }
 .report-pill {
   padding:5px 14px; border-radius:7px;
@@ -250,7 +250,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="logo">Red <span>Basa</span></div>
+    <div class="logo">RED BASA</div>
     <p>Tablero de Control · Acceso restringido</p>
     <input type="password" id="pass-input" placeholder="Contraseña" autocomplete="current-password">
     <button onclick="doLogin()">Ingresar</button>
@@ -774,9 +774,10 @@ function renderCard(centro) {
         else prev=null;
       });
       const dots = coords.filter(p=>p.y!==null).map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="var(--turquesa)"/>`).join('');
+      const rLblSpark = {'nps':'NPS','csat':'CSAT','estrellas':'Estrellas'}[activeReport];
       const first = sparkData[0]?.m||'', last = sparkData[sparkData.length-1]?.m||'';
       sparkSection = `<div class="sc-sparkline">
-        <div class="spark-title">Evolución mensual · 18 meses</div>
+        <div class="spark-title">Evolución mensual ${rLblSpark} · 18 meses</div>
         <svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
           <path d="${pathD}" fill="none" stroke="var(--turquesa)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
           ${dots}
@@ -919,7 +920,7 @@ if(sessionStorage.getItem('rb-auth')==='1') loadData();
 }
 </style>
 <div id="footer" style="display:none">
-  RED BASA · Tablero de Control · v5 · <span id="footer-date"></span>
+  RED BASA · Tablero de Control · v6 · <span id="footer-date"></span>
 </div>
 <script>
 function showFooter() {
