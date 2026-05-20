@@ -441,13 +441,8 @@ def main():
     centros = sorted(set(safe(r,C_CENTRO).strip() for r in all_rows))
     print(f"   Centros: {centros}")
 
-    # ── GOOGLE RATINGS (forzado para primer run, luego cambiar a today().day == 1) ──
-    if True:
-        google_new = fetch_google_ratings(centros)
-        write_ratings_sheet(get_token(), google_new)
-    else:
-        print("\n4. Google Ratings: no es día 1, saltando scraping")
-
+    # ── GOOGLE RATINGS (se leen de la hoja manual, sin scraping) ─────────
+    print("\n4. Leyendo Google Ratings desde hoja manual...")
     ratings_history = read_ratings_history()
 
     HEADER = [
