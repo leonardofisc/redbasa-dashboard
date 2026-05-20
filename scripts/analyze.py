@@ -286,7 +286,7 @@ def clear_sheet():
 NEGATIVE_SHEET_NAME = "Comentarios Negativos"
 NEGATIVE_COMMENTS_HEADER = [
     "id", "fecha_encuesta", "centro", "financiador", "nps",
-    "comentario", "fecha_deteccion", "notificado_dm", "fecha_notificacion"
+    "nombre_paciente", "comentario", "fecha_deteccion", "notificado_dm", "fecha_notificacion"
 ]
 NPS_NEGATIVO_UMBRAL = 4   # NPS ≤ 4
 FECHA_INICIO_ALERTAS = datetime.date(2025, 5, 1)
@@ -397,6 +397,7 @@ def process_negative_comments(all_rows, token):
         if not cmt:
             continue
         centro   = safe(row, C_CENTRO).strip()
+        nombre   = safe(row, C_NOMBRE).strip()
         fin      = norm_prepaga(safe(row, C_PREP)) or ('PREMIUM' if is_premium(safe(row, C_PREP)) else ('NO PREMIUM' if safe(row, C_PREP) else 'SIN DATO'))
         nps_val  = to_num(safe(row, C_NPS)) or ''
         key      = f"{fecha.isoformat()}|{centro}|{cmt[:80]}"
@@ -411,6 +412,7 @@ def process_negative_comments(all_rows, token):
             centro,
             fin,
             nps_val,
+            nombre,
             cmt,
             today_str,   # fecha_deteccion
             '',          # notificado_dm
