@@ -614,9 +614,9 @@ function renderCard(report) {
     }
   }
 
-  // Google + AI — solo en la card de NPS (primera)
+  // Google + AI — en la card de Estrellas
   let googleSection = '', aiSection = '';
-  if(report==='nps'){
+  if(report==='estrellas'){
     const gRow = getRow('month','TODAS');
     if(gRow?.google_rating){
       const gr=parseFloat(gRow.google_rating);
