@@ -18,9 +18,46 @@ CONSOLIDATED_SHEET_ID = "1mhUnoBaKmomr2HM3Ojr_-2Anf0deefnS4TWm0P_WLbc"
 RESULTS_SHEET_ID      = os.environ["RESULTS_SHEET_ID"]
 ANTHROPIC_API_KEY     = os.environ["ANTHROPIC_API_KEY"]
 GOOGLE_SA             = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
+GOOGLE_RATINGS_SHEET  = os.environ.get("GOOGLE_RATINGS_SHEET_ID", "")
 
 # Token cache
 _token_cache = {"token": None, "expires": 0}
+
+# ── PLACE IDs GOOGLE MAPS ─────────────────────────────────────────────────
+PLACE_IDS = {
+    "POLICLÍNICO REGIONAL AVELLANEDA":      "ChIJc0KmDq7MvJURkWByxyeoVyw",
+    "SANATORIO AUGUSTO VANDOR":             "ChIJzbPfUUhyu5URZLl0-uH13d0",
+    "CLÍNICA SAGRADO CORAZÓN":              "ChIJm1F2Co6hvJURW2gJxMQMOCI",
+    "SANATORIO SAN MARTÍN":                 "ChIJlbjjdna3vJUR2iDMN2kc30Q",
+    "CLÍNICA SANTA CLARA VARELA":           "ChIJ0TsF13opo5UR9kNjwwAvUjA",
+    "CLÍNICA SANTA CLARA QUILMES":          "ChIJP9HQBQwyo5UR7L7if6QWCqg",
+    "CLÍNICA SANTA CLARA MORÓN":            "ChIJh-IYCwDHvJURurPVSQhVKPY",
+    "CLÍNICA SANTA CLARA TALAR":            "ChIJm8FZRV2jvJURcRCDW058AZo",
+    "CLÍNICA SANTA CLARA ZÁRATE":           "ChIJ61rCoV4Lu5URBuFY7d9Tb0U",
+    "SANATORIO GENERAL SARMIENTO":          "ChIJrcA81Gy9vJURt2zOrHt9vjM",
+    "SANATORIO LOBOS":                      "ChIJNaVyaVIHvZURUx5ARZhxeXw",
+    "CENTRO GALLEGO DE BUENOS AIRES":       "ChIJ4Q2ZVObKvJURfRdBRH9oDds",
+    "POLICLÍNICO CENTRAL UOM":              "ChIJwdnBjPbKvJURMeoB0IsY5Go",
+    "SANATORIO SAN JOSÉ":                   "ChIJuQaCbITKvJURjCUz0wOjBak",
+    "CLÍNICA SANTA ROSA":                   "ChIJ99XsoDEJfpYREkiEXvh2crg",
+    "SOCIEDAD ESPAÑOLA":                    "ChIJIVW75CIJfpYR4Ca-xVpF6nk",
+    "CLÍNICA SANTA CLARA MENDOZA":          "ChIJ34WiSWUJfpYRxxaTK0Lc2eY",
+    "CENTRO MÉDICO SANTA CLARA DORREGO MALL":"ChIJFWK77mIJfpYRLgavaHRKN4I",
+    "SANATORIO JULIÁN MORENO":              "ChIJtwTLdgAttpUR6VRcjlAeOz0",
+    "CLÍNICA SANTA CLARA SAN JUAN":         "ChIJxxxVZCdAgZYRKXU0VzA5M80",
+}
+
+def match_place_id(centro_name):
+    """Match a centro name from the sheet to a Place ID (fuzzy)."""
+    cu = centro_name.upper().strip()
+    # Direct match
+    if cu in PLACE_IDS:
+        return PLACE_IDS[cu]
+    # Partial match
+    for key, pid in PLACE_IDS.items():
+        if key in cu or cu in key:
+            return pid
+    return None
 
 # Columnas 0-based
 C_DATE  = 0;  C_CENTRO = 2
@@ -273,19 +310,145 @@ Respondé SOLO con JSON (sin markdown):
     except:
         return text[:300], '[]', ''
 
+# ── GOOGLE MAPS SCRAPING ─────────────────────────────────────────────────
+def scrape_google_rating(place_id):
+    """
+    Fetch rating and review count from Google Maps for a given Place ID.
+    Uses the public /maps/place URL — no API key required.
+    Returns (rating, review_count) or (None, None) on failure.
+    """
+    url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+    req = urllib.request.Request(url)
+    req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    req.add_header('Accept-Language', 'es-AR,es;q=0.9')
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            html = r.read().decode('utf-8', errors='ignore')
+
+        # Rating: appears as "4.2" near "estrellas" or in structured data
+        rating = None
+        review_count = None
+
+        # Try structured data first (most reliable)
+        m = re.search(r'"aggregateRating".*?"ratingValue":\s*"?([\d.]+)"?', html)
+        if m:
+            rating = float(m.group(1))
+
+        # Fallback: look for pattern like >4.2< near reviews
+        if not rating:
+            m = re.search(r'(\d\.\d)\s*\([\d,\.]+\s*rese', html)
+            if m:
+                rating = float(m.group(1))
+
+        # Fallback 2: window.APP_INITIALIZATION_STATE data
+        if not rating:
+            m = re.search(r'\[null,(\d\.\d),\d+\]', html)
+            if m:
+                rating = float(m.group(1))
+
+        # Review count
+        m = re.search(r'([\d,\.]+)\s*rese[ñn]as?', html)
+        if m:
+            review_count = int(re.sub(r'[,\.]', '', m.group(1)))
+
+        if not review_count:
+            m = re.search(r'\[null,(\d\.\d),(\d+)\]', html)
+            if m:
+                review_count = int(m.group(2))
+
+        return rating, review_count
+    except Exception as e:
+        print(f"     ⚠ Error scraping {place_id}: {e}")
+        return None, None
+
+def fetch_google_ratings(centros):
+    """Scrape Google Maps ratings for all centros. Returns dict centro→{rating, reviews}."""
+    print("\n4. Scraping Google Maps ratings...")
+    results = {}
+    for centro in centros:
+        pid = match_place_id(centro)
+        if not pid:
+            print(f"   ⚠ Sin Place ID para: {centro}")
+            continue
+        rating, reviews = scrape_google_rating(pid)
+        results[centro] = {'rating': rating, 'reviews': reviews, 'place_id': pid}
+        status = f"★ {rating} ({reviews} reseñas)" if rating else "sin datos"
+        print(f"   {centro[:40]:<40} {status}")
+        time.sleep(1.5)  # rate limit
+    return results
+
+def write_ratings_sheet(token, ratings_by_centro):
+    """Append today's ratings to the Google Ratings sheet."""
+    if not GOOGLE_RATINGS_SHEET:
+        print("   ⚠ GOOGLE_RATINGS_SHEET_ID no configurado, saltando escritura de ratings")
+        return
+    t = today().isoformat()
+    new_rows = []
+    for centro, d in ratings_by_centro.items():
+        if d['rating'] is not None:
+            new_rows.append([centro, t, d['rating'], d['reviews'] or 0])
+    if not new_rows:
+        print("   ⚠ Sin ratings para escribir")
+        return
+    # Append (don't clear — we want historical data)
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_RATINGS_SHEET}/values/{urllib.parse.quote('Hoja 1!A:D')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+    body = json.dumps({"values": new_rows}).encode()
+    req = urllib.request.Request(url, data=body, method='POST')
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req) as r:
+        json.loads(r.read())
+    print(f"   ✓ {len(new_rows)} ratings escritos")
+
+def read_ratings_history():
+    """Read full ratings history from Google Ratings sheet. Returns dict centro→list of {fecha,rating,reviews}."""
+    if not GOOGLE_RATINGS_SHEET:
+        return {}
+    try:
+        token = get_token()
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_RATINGS_SHEET}/values/A1:D10000"
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+        rows = data.get("values", [])
+        history = {}
+        for row in rows:
+            if len(row) < 3: continue
+            centro, fecha, rating = row[0], row[1], row[2]
+            reviews = int(row[3]) if len(row) > 3 else 0
+            try: rating = float(rating)
+            except: continue
+            if centro not in history:
+                history[centro] = []
+            history[centro].append({'fecha': fecha, 'rating': rating, 'reviews': reviews})
+        return history
+    except Exception as e:
+        print(f"   ⚠ Error leyendo ratings history: {e}")
+        return {}
+
 # ── MAIN ──────────────────────────────────────────────────────────────────
 def main():
     print("=== Red Basa · Análisis nocturno ===")
     print(f"Fecha: {today()}")
 
     print("\n1. Descargando planilla consolidada...")
-    raw = fetch_csv(CONSOLIDATED_SHEET_ID)
+    raw = fetch_sheet_values(CONSOLIDATED_SHEET_ID)
     all_rows = [r for r in raw[1:] if r and len(r)>C_CENTRO and safe(r,C_DATE) and safe(r,C_CENTRO)]
     print(f"   {len(all_rows)} filas cargadas")
 
     cuts = cutoffs()
     centros = sorted(set(safe(r,C_CENTRO).strip() for r in all_rows))
     print(f"   Centros: {centros}")
+
+    # ── GOOGLE RATINGS (solo día 1 del mes) ──────────────────────────────
+    if today().day == 1:
+        google_new = fetch_google_ratings(centros)
+        write_ratings_sheet(get_token(), google_new)
+    else:
+        print("\n4. Google Ratings: no es día 1, saltando scraping")
+
+    ratings_history = read_ratings_history()
 
     HEADER = [
         "centro","periodo","financiador",
@@ -297,22 +460,26 @@ def main():
         "estrellas","n_estrellas",
         "nps_prev","csat_prev","estrellas_prev",
         "dist_nps","sparkline",
+        "google_rating","google_reviews","google_sparkline",
         "resumen_ia","problemas_ia","tags_ia",
         "fecha_analisis"
     ]
     rows_out = [HEADER]
-
     PERIODOS = ['week','month','year']
 
     print("\n2. Pre-calculando métricas...")
     for centro in centros:
         print(f"   → {centro}")
         crows = [r for r in all_rows if safe(r,C_CENTRO).strip()==centro]
-
-        # Sparkline (calculado una sola vez por centro, sobre todos los datos)
         sparkline = calc_sparkline(crows)
 
-        # AI analysis (solo para periodo month, financiador TODAS)
+        # Google rating actual e historial
+        hist = sorted(ratings_history.get(centro, []), key=lambda x: x['fecha'])
+        google_rating    = hist[-1]['rating']  if hist else None
+        google_reviews   = hist[-1]['reviews'] if hist else None
+        google_sparkline = [{'m': h['fecha'], 'r': h['rating']} for h in hist[-18:]]
+
+        # AI analysis
         month_rows = period_rows(crows, *cuts['month'])
         neg_cmts = [safe(r,C_CMT) for r in month_rows
                     if not invalid(safe(r,C_CMT)) and
@@ -323,13 +490,11 @@ def main():
         resumen, problemas, tags = analyze_with_ai(centro, neg_cmts, nps_m, csat_m, st_m)
 
         for periodo in PERIODOS:
-            start, end       = cuts[periodo]
+            start, end           = cuts[periodo]
             prev_start, prev_end = cuts[f'prev_{periodo}']
             p_rows  = period_rows(crows, start, end)
             pp_rows = period_rows(crows, prev_start, prev_end)
-
-            # Dist NPS (solo una vez por periodo, con TODAS)
-            dist = calc_dist(p_rows)
+            dist    = calc_dist(p_rows)
 
             for fin in FINANCIADORES:
                 f_rows  = financiador_rows(p_rows, fin)
@@ -338,8 +503,6 @@ def main():
                 nps_v, n_nps, pct_p, pct_d = calc_nps(f_rows)
                 rrhh, conf, adic, glob      = calc_csat(f_rows)
                 st_v, n_st                  = calc_stars(f_rows)
-
-                # Individual CSAT dimensions
                 c_adm  = calc_csat_col(f_rows, [C_ADM],  True)
                 c_med  = calc_csat_col(f_rows, [C_MED],  True)
                 c_enf  = calc_csat_col(f_rows, [C_ENF],  True)
@@ -350,10 +513,9 @@ def main():
                 c_menu = calc_csat_col(f_rows, [C_MENU], False)
                 c_esp  = calc_csat_col(f_rows, [C_ESP],  True)
                 c_sol  = calc_csat_col(f_rows, [C_SOL],  True)
-
-                nps_prev, *_  = calc_nps(fp_rows)
-                _, _, _, cp   = calc_csat(fp_rows)
-                st_prev, _    = calc_stars(fp_rows)
+                nps_prev, *_ = calc_nps(fp_rows)
+                _, _, _, cp  = calc_csat(fp_rows)
+                st_prev, _   = calc_stars(fp_rows)
 
                 def v(x): return x if x is not None else ''
 
@@ -366,8 +528,11 @@ def main():
                     v(c_esp), v(c_sol),
                     v(st_v), n_st,
                     v(nps_prev), v(cp), v(st_prev),
-                    json.dumps(dist, ensure_ascii=False)      if fin=='TODAS' else '',
-                    json.dumps(sparkline, ensure_ascii=False) if fin=='TODAS' and periodo=='month' else '',
+                    json.dumps(dist, ensure_ascii=False)             if fin=='TODAS' else '',
+                    json.dumps(sparkline, ensure_ascii=False)        if fin=='TODAS' and periodo=='month' else '',
+                    v(google_rating)                                 if fin=='TODAS' and periodo=='month' else '',
+                    v(google_reviews)                                if fin=='TODAS' and periodo=='month' else '',
+                    json.dumps(google_sparkline, ensure_ascii=False) if fin=='TODAS' and periodo=='month' else '',
                     resumen   if fin=='TODAS' and periodo=='month' else '',
                     problemas if fin=='TODAS' and periodo=='month' else '',
                     tags      if fin=='TODAS' and periodo=='month' else '',
