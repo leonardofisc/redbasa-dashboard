@@ -441,8 +441,8 @@ def main():
     centros = sorted(set(safe(r,C_CENTRO).strip() for r in all_rows))
     print(f"   Centros: {centros}")
 
-    # ── GOOGLE RATINGS (solo día 1 del mes) ──────────────────────────────
-    if today().day == 1:
+    # ── GOOGLE RATINGS (forzado para primer run, luego cambiar a today().day == 1) ──
+    if True:
         google_new = fetch_google_ratings(centros)
         write_ratings_sheet(get_token(), google_new)
     else:
