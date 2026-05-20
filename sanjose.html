@@ -901,7 +901,7 @@ async function marcarNotificado(id, checkbox) {
 // NOTA: la hoja debe ser pública para lectura, pero escritura requiere autenticación.
 // Solución: usar un Google Apps Script como proxy (recomendado) o el token del usuario.
 // Por ahora marcamos vía Apps Script web app (ver instrucciones en README).
-const APPS_SCRIPT_URL = ''; // ← completar con la URL del Apps Script web app
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-ctSWIAtkfvu5-wT-R1Vcj4Yj4hSXfhZ3QphnWqzfZjBIP71RfI_99I16PCeuINfr/exec'; // ← completar con la URL del Apps Script web app
 
 async function getGoogleToken() {
   // Si hay Apps Script URL configurada, usarla como proxy
