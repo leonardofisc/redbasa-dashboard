@@ -207,6 +207,38 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 .ai-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; }
 .ai-tag { padding:2px 8px; border-radius:20px; background:rgba(0,174,240,.1); color:var(--azul); font-size:11px; }
 
+/* ALERTAS */
+.alertas-card {
+  background:var(--card-bg); border-radius:14px;
+  border:2px solid var(--red); overflow:hidden; margin-top:20px;
+}
+.alertas-header {
+  background:#fdf0f0; padding:14px 20px;
+  display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid #f5d0d0;
+}
+.alertas-title { font-family:'Nunito',sans-serif; font-size:14px; font-weight:800; color:var(--red); }
+.alertas-subtitle { font-size:12px; color:var(--muted); margin-top:2px; }
+.alerta-item {
+  padding:14px 20px; border-bottom:1px solid var(--border);
+  display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:start;
+}
+.alerta-item:last-child { border-bottom:none; }
+.alerta-item.nuevo { background:rgba(224,82,82,.04); }
+.alerta-item.pendiente { background:rgba(240,180,41,.04); }
+.alerta-item.notificado { background:rgba(32,211,194,.04); opacity:.75; }
+.alerta-badge { padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; font-family:'Nunito',sans-serif; white-space:nowrap; margin-top:2px; }
+.alerta-badge.nuevo     { background:rgba(224,82,82,.15); color:var(--red); }
+.alerta-badge.pendiente { background:rgba(240,180,41,.18); color:#7a5200; }
+.alerta-badge.notificado{ background:rgba(32,211,194,.15); color:#0d8a80; }
+.alerta-meta { font-size:11px; color:var(--muted); margin-top:4px; line-height:1.5; }
+.alerta-cmt  { font-size:13px; color:var(--texto); margin-top:4px; line-height:1.5; font-style:italic; }
+.alerta-nps  { font-family:'Nunito',sans-serif; font-size:18px; font-weight:800; color:var(--red); flex-shrink:0; padding-top:2px; }
+.alerta-check-wrap { display:flex; flex-direction:column; align-items:center; gap:4px; padding-top:2px; }
+.alerta-check { width:20px; height:20px; cursor:pointer; accent-color:var(--turquesa); }
+.alerta-check-label { font-size:9px; color:var(--muted); text-align:center; line-height:1.2; }
+.alerta-notif-time { font-size:10px; color:#0d8a80; margin-top:3px; }
+
 /* FOOTER */
 #footer { text-align:center; padding:20px 24px; font-size:11px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px; }
 
@@ -281,6 +313,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 
     <div id="grid" style="display:none"></div>
     <div id="ai-section" style="display:none;margin-top:20px"></div>
+    <div id="alertas-section" style="display:none"></div>
   </div>
 
   <div id="footer">
@@ -292,6 +325,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 const CENTRO           = 'SANATORIO SAN JOSÉ';
 const PASS_HASH        = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const RESULTS_SHEET_ID = '1WhRfeCer_8F_Y3jLUkzY7GGhKHY0XlzN7AyuXbsla8I';
+const NEGATIVE_SHEET   = 'Comentarios Negativos';
 const EP_CONFIG = {
   'CENTRO GALLEGO DE BUENOS AIRES': { since: '2025-10' },
   'SANATORIO SAN JOSÉ':             { since: '2026-02' },
@@ -392,6 +426,7 @@ async function loadData() {
     document.getElementById('loading-state').style.display='none';
     document.getElementById('grid').style.display='grid';
     render();
+    loadAlertas();
   } catch(e) {
     document.getElementById('loading-state').innerHTML =
       `<div style="color:var(--red)">Error cargando resultados: ${e.message}<br>
@@ -718,6 +753,203 @@ function render(){
 }
 
 if(sessionStorage.getItem('rbsj-auth')==='1') loadData();
+
+// ── ALERTAS — Comentarios Negativos ──────────────────────────────────────
+let alertasData = [];
+
+async function loadAlertas() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${RESULTS_SHEET_ID}/export?format=csv&gid=0&sheet=${encodeURIComponent(NEGATIVE_SHEET)}`;
+    // Usamos la API pública de export con nombre de hoja
+    const url2 = `https://docs.google.com/spreadsheets/d/${RESULTS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(NEGATIVE_SHEET)}`;
+    const resp = await fetch(url2);
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    if(rows.length < 2){ renderAlertas([]); return; }
+    const header = rows[0].map(h => h.trim());
+    const idx = {};
+    header.forEach((h,i) => idx[h] = i);
+    alertasData = rows.slice(1)
+      .map(r => ({
+        id:                r[idx['id']]                || '',
+        fecha_encuesta:    r[idx['fecha_encuesta']]    || '',
+        centro:            r[idx['centro']]            || '',
+        financiador:       r[idx['financiador']]       || '',
+        nps:               r[idx['nps']]               || '',
+        comentario:        r[idx['comentario']]        || '',
+        fecha_deteccion:   r[idx['fecha_deteccion']]   || '',
+        notificado_dm:     r[idx['notificado_dm']]     || '',
+        fecha_notificacion:r[idx['fecha_notificacion']]|| '',
+      }))
+      .filter(a => a.centro === CENTRO && a.comentario);
+    renderAlertas(alertasData);
+  } catch(e) {
+    console.warn('Alertas no disponibles:', e.message);
+    document.getElementById('alertas-section').style.display = 'none';
+  }
+}
+
+function renderAlertas(items) {
+  const el = document.getElementById('alertas-section');
+  if(!items.length){ el.style.display='none'; return; }
+
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  // Clasificar
+  const nuevos    = items.filter(a => !a.notificado_dm && a.fecha_deteccion === todayStr);
+  const pendientes= items.filter(a => !a.notificado_dm && a.fecha_deteccion !== todayStr);
+  const notificados=items.filter(a =>  a.notificado_dm);
+
+  // Ordenar: nuevos primero, luego pendientes por fecha desc, luego notificados
+  const ordered = [
+    ...nuevos.sort((a,b) => b.fecha_encuesta.localeCompare(a.fecha_encuesta)),
+    ...pendientes.sort((a,b) => b.fecha_encuesta.localeCompare(a.fecha_encuesta)),
+    ...notificados.sort((a,b) => b.fecha_notificacion.localeCompare(a.fecha_notificacion)),
+  ];
+
+  const sinAcuse = nuevos.length + pendientes.length;
+
+  const itemsHtml = ordered.map(a => {
+    const isNuevo     = !a.notificado_dm && a.fecha_deteccion === todayStr;
+    const isPendiente = !a.notificado_dm && a.fecha_deteccion !== todayStr;
+    const isNotif     = !!a.notificado_dm;
+    const cls         = isNuevo ? 'nuevo' : isPendiente ? 'pendiente' : 'notificado';
+    const badgeLabel  = isNuevo ? 'Nuevo hoy' : isPendiente ? 'Sin acuse' : 'Notificado';
+
+    // Días sin acuse
+    let demoraHtml = '';
+    if(!isNotif && a.fecha_deteccion){
+      const dias = Math.floor((new Date() - new Date(a.fecha_deteccion)) / 86400000);
+      if(dias > 0) demoraHtml = `<span style="color:var(--red);font-weight:700"> · ${dias}d sin acuse</span>`;
+    }
+    // Tiempo de respuesta si notificado
+    let tiempoRespHtml = '';
+    if(isNotif && a.fecha_notificacion && a.fecha_deteccion){
+      const diff = Math.floor((new Date(a.fecha_notificacion.slice(0,10)) - new Date(a.fecha_deteccion)) / 86400000);
+      tiempoRespHtml = `<div class="alerta-notif-time">✓ Notificado ${a.fecha_notificacion} · respuesta en ${diff === 0 ? 'el mismo día' : diff + 'd'}</div>`;
+    }
+
+    return `<div class="alerta-item ${cls}" id="alerta-${a.id}">
+      <div>
+        <span class="alerta-nps">${a.nps ? (a.nps > 0 ? '' : '') + a.nps : '—'}</span>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="alerta-badge ${cls}">${badgeLabel}</span>
+          <span style="font-size:11px;color:var(--muted)">${a.fecha_encuesta} · ${a.financiador}</span>
+          ${demoraHtml}
+        </div>
+        <div class="alerta-cmt">"${a.comentario}"</div>
+        ${tiempoRespHtml}
+      </div>
+      <div class="alerta-check-wrap">
+        ${!isNotif ? `
+          <input type="checkbox" class="alerta-check" id="chk-${a.id}"
+            onchange="marcarNotificado('${a.id}', this)">
+          <label for="chk-${a.id}" class="alerta-check-label">Notificado<br>DM</label>
+        ` : `<span style="font-size:16px">✓</span>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="alertas-card">
+    <div class="alertas-header">
+      <div>
+        <div class="alertas-title">⚠ Alertas · Comentarios Negativos</div>
+        <div class="alertas-subtitle">${sinAcuse} sin acuse de recibo · ${notificados.length} notificados · desde 1 mayo 2025</div>
+      </div>
+    </div>
+    ${itemsHtml}
+  </div>`;
+  el.style.display = 'block';
+}
+
+async function marcarNotificado(id, checkbox) {
+  checkbox.disabled = true;
+  const ahora = new Date().toLocaleString('es-AR', {
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  });
+  // Buscar fila en alertasData para obtener el índice real en la hoja
+  const idx = alertasData.findIndex(a => a.id === id);
+  if(idx < 0){ checkbox.disabled = false; return; }
+
+  // El índice en la hoja es idx+2 (1 header + 1-based)
+  const sheetRow = idx + 2;
+  try {
+    // Escribir "DM" en col H (notificado_dm) y fecha en col I (fecha_notificacion)
+    const token = await getGoogleToken();
+    const range  = encodeURIComponent(`'${NEGATIVE_SHEET}'!H${sheetRow}:I${sheetRow}`);
+    const url    = `https://sheets.googleapis.com/v4/spreadsheets/${RESULTS_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+    await fetch(url, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [['DM', ahora]] })
+    });
+    // Actualizar local y re-render
+    alertasData[idx].notificado_dm      = 'DM';
+    alertasData[idx].fecha_notificacion = ahora;
+    renderAlertas(alertasData);
+  } catch(e) {
+    alert('Error al guardar: ' + e.message);
+    checkbox.checked  = false;
+    checkbox.disabled = false;
+  }
+}
+
+// Para escribir en Sheets necesitamos un token — usamos el endpoint público
+// NOTA: la hoja debe ser pública para lectura, pero escritura requiere autenticación.
+// Solución: usar un Google Apps Script como proxy (recomendado) o el token del usuario.
+// Por ahora marcamos vía Apps Script web app (ver instrucciones en README).
+const APPS_SCRIPT_URL = ''; // ← completar con la URL del Apps Script web app
+
+async function getGoogleToken() {
+  // Si hay Apps Script URL configurada, usarla como proxy
+  if(APPS_SCRIPT_URL) return 'via_apps_script';
+  throw new Error('Configurar APPS_SCRIPT_URL para escritura en Sheets');
+}
+
+// Override marcarNotificado para usar Apps Script proxy
+async function marcarNotificado(id, checkbox) {
+  if(!APPS_SCRIPT_URL){
+    alert('⚠ Para activar el checkbox configurá el APPS_SCRIPT_URL en el portal.\nVer instrucciones en el README.');
+    checkbox.checked  = false;
+    checkbox.disabled = false;
+    return;
+  }
+  checkbox.disabled = true;
+  const ahora = new Date().toLocaleString('es-AR', {
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  });
+  const idx = alertasData.findIndex(a => a.id === id);
+  if(idx < 0){ checkbox.disabled = false; return; }
+  try {
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'marcarNotificado',
+        sheetId: RESULTS_SHEET_ID,
+        sheetName: NEGATIVE_SHEET,
+        id: id,
+        notificado: 'DM',
+        fecha: ahora
+      })
+    });
+    const result = await resp.json();
+    if(result.ok){
+      alertasData[idx].notificado_dm      = 'DM';
+      alertasData[idx].fecha_notificacion = ahora;
+      renderAlertas(alertasData);
+    } else {
+      throw new Error(result.error || 'Error desconocido');
+    }
+  } catch(e) {
+    alert('Error al guardar: ' + e.message);
+    checkbox.checked  = false;
+    checkbox.disabled = false;
+  }
+}
 </script>
 </body>
 </html>
