@@ -649,30 +649,45 @@ function renderCard(centro) {
 
   } else if (activeReport==='csat') {
     const row = curRow;
-    const csatBlocks = [
-      { title:'Recurso Humano', key:'csat_rrhh', items:[
-        {label:'Admisionistas'}, {label:'Médicos'}, {label:'Enfermeros'},
-        {label:'Seguridad'}, {label:'Limp. personal'}
+    const CSAT_BLOCKS = [
+      { title:'Recurso Humano', key:'csat_rrhh', dims:[
+        { label:'Admisionistas',   key:'csat_adm'  },
+        { label:'Médicos',         key:'csat_med'  },
+        { label:'Enfermeros/as',   key:'csat_enf'  },
+        { label:'Seguridad',       key:'csat_seg'  },
+        { label:'Limp. personal',  key:'csat_limp' },
       ]},
-      { title:'Confort', key:'csat_confort', items:[
-        {label:'Limp. centro'}, {label:'Instalaciones'}, {label:'Menú'}
+      { title:'Confort', key:'csat_confort', dims:[
+        { label:'Limp. centro',    key:'csat_limp_cal' },
+        { label:'Instalaciones',   key:'csat_inst'     },
+        { label:'Menú y comidas',  key:'csat_menu'     },
       ]},
-      { title:'Atención', key:'csat_adic', items:[
-        {label:'Tiempo espera'}, {label:'Solución inconv.'}
+      { title:'Atención', key:'csat_adic', dims:[
+        { label:'Tiempo de espera',key:'csat_espera'   },
+        { label:'Solución inconv.',key:'csat_solucion' },
       ]},
     ];
-    reportSection = `<div class="sc-csat">` + csatBlocks.map(block => {
-      const v = row?.[block.key] ?? null;
-      const cls = colorCls(v);
-      const pct = v!==null&&!isNaN(v) ? ((v-1)/4*100).toFixed(0) : 0;
-      const color = cls==='good'?'#0d8a80':cls==='warn'?'#b07a00':cls==='bad'?'var(--red)':'#b0c8d4';
-      return `<div class="csat-block">
-        <div class="csat-block-title">${block.title}</div>
-        <div class="csat-row">
-          <div class="csat-row-label">Promedio bloque</div>
+    reportSection = `<div class="sc-csat">` + CSAT_BLOCKS.map(block => {
+      const bVal  = row?.[block.key] ?? null;
+      const bCls  = colorCls(bVal);
+      const bColor= bCls==='good'?'#0d8a80':bCls==='warn'?'#b07a00':bCls==='bad'?'var(--red)':'#b0c8d4';
+      const dimRows = block.dims.map(d => {
+        const v   = row?.[d.key] ?? null;
+        const cls = colorCls(v);
+        const pct = v!==null&&!isNaN(v) ? ((v-1)/4*100).toFixed(0) : 0;
+        const color = cls==='good'?'#0d8a80':cls==='warn'?'#b07a00':cls==='bad'?'var(--red)':'#b0c8d4';
+        return `<div class="csat-row">
+          <div class="csat-row-label">${d.label}</div>
           <div class="csat-bar-bg"><div class="csat-bar-fill ${cls}" style="width:${pct}%"></div></div>
           <div class="csat-row-val" style="color:${color}">${v!==null&&!isNaN(v)?parseFloat(v).toFixed(1):'—'}</div>
+        </div>`;
+      }).join('');
+      return `<div class="csat-block">
+        <div class="csat-block-title" style="display:flex;justify-content:space-between">
+          <span>${block.title}</span>
+          <span style="font-weight:700;color:${bColor}">${bVal!==null&&!isNaN(bVal)?parseFloat(bVal).toFixed(1):''}</span>
         </div>
+        ${dimRows}
       </div>`;
     }).join('') + `</div>`;
 
