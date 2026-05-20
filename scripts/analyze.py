@@ -443,8 +443,16 @@ Respondé SOLO con JSON (sin markdown):
     req.add_header('x-api-key', ANTHROPIC_API_KEY)
     req.add_header('anthropic-version', '2023-06-01')
     req.add_header('content-type', 'application/json')
-    with urllib.request.urlopen(req) as r:
-        resp = json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req) as r:
+            resp = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', errors='ignore')
+        print(f"     ⚠ API error {e.code}: {body[:300]}")
+        return "Error en análisis IA.", '[]', ''
+    except Exception as e:
+        print(f"     ⚠ API error: {e}")
+        return "Error en análisis IA.", '[]', ''
     text = resp['content'][0]['text'].strip()
     try:
         p = json.loads(text)
