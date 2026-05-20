@@ -886,7 +886,7 @@ function renderAlertas(items) {
     <div class="alertas-header">
       <div>
         <div class="alertas-title">⚠ Alertas · Comentarios Negativos</div>
-        <div class="alertas-subtitle">${sinAcuse} sin acuse de recibo · ${notificados.length} notificados · desde 1 mayo 2025</div>
+        <div class="alertas-subtitle">${sinAcuse} sin acuse de recibo · ${notificados.length} notificados · desde 1 mayo 2026</div>
       </div>
     </div>
     ${itemsHtml}
@@ -909,18 +909,13 @@ async function marcarNotificado(id, checkbox) {
   const idx = alertasData.findIndex(a => a.id === id);
   if(idx < 0){ checkbox.disabled = false; return; }
   try {
-    const resp = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({
-        action:     'marcarNotificado',
-        sheetId:    RESULTS_SHEET_ID,
-        sheetName:  NEGATIVE_SHEET,
-        id:         id,
-        notificado: 'DM',
-        fecha:      ahora
-      })
+    const params = new URLSearchParams({
+      action:     'marcarNotificado',
+      id:         id,
+      notificado: 'DM',
+      fecha:      ahora
     });
+    await fetch(`${APPS_SCRIPT_URL}?${params}`, { mode: 'no-cors' });
     // no-cors no devuelve body — asumimos éxito si no hay excepción
     alertasData[idx].notificado_dm      = 'DM';
     alertasData[idx].fecha_notificacion = ahora;
