@@ -464,10 +464,16 @@ Respondé SOLO con JSON (sin markdown):
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         text = match.group(0)
+    print(f"     DEBUG AI text[:100]: {text[:100]}")
     try:
         p = json.loads(text)
-        return p.get('resumen',''), json.dumps(p.get('problemas',[]),ensure_ascii=False), ','.join(p.get('tags',[]))
-    except:
+        resumen   = p.get('resumen','')
+        problemas = json.dumps(p.get('problemas',[]), ensure_ascii=False)
+        tags      = ','.join(p.get('tags',[]))
+        print(f"     DEBUG parsed ok: resumen={resumen[:50]}")
+        return resumen, problemas, tags
+    except Exception as ex:
+        print(f"     DEBUG parse error: {ex} | text: {text[:200]}")
         return text[:300], '[]', ''
 
 # ── GOOGLE MAPS SCRAPING ─────────────────────────────────────────────────
