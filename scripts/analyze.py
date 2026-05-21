@@ -285,7 +285,7 @@ def clear_sheet():
 # ── COMENTARIOS NEGATIVOS ─────────────────────────────────────────────────
 NEGATIVE_SHEET_NAME = "Comentarios Negativos"
 NEGATIVE_COMMENTS_HEADER = [
-    "id", "fecha_encuesta", "centro", "financiador", "nps",
+    "id", "fecha_encuesta", "centro", "financiador", "estrellas",
     "nombre_paciente", "comentario", "fecha_deteccion", "notificado_dm", "fecha_notificacion"
 ]
 NPS_NEGATIVO_UMBRAL = 4   # NPS ≤ 4
@@ -396,11 +396,11 @@ def process_negative_comments(all_rows, token):
         cmt = safe(row, C_CMT).strip()
         if not cmt:
             continue
-        centro   = safe(row, C_CENTRO).strip()
-        nombre   = safe(row, C_NOMBRE).strip()
-        fin      = norm_prepaga(safe(row, C_PREP)) or ('PREMIUM' if is_premium(safe(row, C_PREP)) else ('NO PREMIUM' if safe(row, C_PREP) else 'SIN DATO'))
-        nps_val  = to_num(safe(row, C_NPS)) or ''
-        key      = f"{fecha.isoformat()}|{centro}|{cmt[:80]}"
+        centro      = safe(row, C_CENTRO).strip()
+        nombre      = safe(row, C_NOMBRE).strip()
+        fin         = norm_prepaga(safe(row, C_PREP)) or ('PREMIUM' if is_premium(safe(row, C_PREP)) else ('NO PREMIUM' if safe(row, C_PREP) else 'SIN DATO'))
+        estrellas_val = to_num(safe(row, C_STAR)) or ''
+        key         = f"{fecha.isoformat()}|{centro}|{cmt[:80]}"
         if key in existing_keys:
             continue
         existing_keys.add(key)
@@ -411,12 +411,12 @@ def process_negative_comments(all_rows, token):
             fecha.isoformat(),
             centro,
             fin,
-            nps_val,
+            estrellas_val,
             nombre,
             cmt,
-            today_str,   # fecha_deteccion
-            '',          # notificado_dm
-            '',          # fecha_notificacion
+            today_str,
+            '',
+            '',
         ])
 
     if new_rows:
