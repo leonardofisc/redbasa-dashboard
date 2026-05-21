@@ -810,7 +810,7 @@ async function loadAlertas() {
         fecha_encuesta:     r[idx['fecha_encuesta']]     || '',
         centro:             r[idx['centro']]             || '',
         financiador:        r[idx['financiador']]        || '',
-        nps:                r[idx['nps']]                || '',
+        estrellas:          r[idx['estrellas']]          || '',
         nombre_paciente:    r[idx['nombre_paciente']]    || '',
         comentario:         r[idx['comentario']]         || '',
         fecha_deteccion:    r[idx['fecha_deteccion']]    || '',
@@ -826,67 +826,77 @@ async function loadAlertas() {
 }
 
 function renderAlertas(items) {
-  const el = document.getElementById('alertas-section');
-  if(!items.length){ el.style.display='none'; updateAlertIcon(0); return; }
+  const el  = document.getElementById('alertas-section');
+  const now = new Date();
 
-  const todayStr = new Date().toISOString().slice(0,10);
+  function diasDesde(fechaStr) {
+    return Math.floor((now - new Date(fechaStr)) / 86400000);
+  }
+  function horasDesde(fechaStr) {
+    return (now - new Date(fechaStr)) / 3600000;
+  }
 
-  const nuevos     = items.filter(a => !a.notificado_dm && a.fecha_deteccion === todayStr);
-  const pendientes = items.filter(a => !a.notificado_dm && a.fecha_deteccion !== todayStr);
-  const notificados= items.filter(a =>  a.notificado_dm);
-  const sinAcuse   = nuevos.length + pendientes.length;
+  const rojos     = items.filter(a => !a.notificado_dm && diasDesde(a.fecha_deteccion) > 2);
+  const amarillos = items.filter(a => !a.notificado_dm && diasDesde(a.fecha_deteccion) <= 2);
+  const celestes  = items.filter(a => a.notificado_dm && horasDesde(a.fecha_notificacion) <= 24);
+  // Notificados hace más de 24hs → no aparecen
 
+  const sinAcuse = rojos.length + amarillos.length;
   updateAlertIcon(sinAcuse);
 
+  if(!sinAcuse && !celestes.length){ el.style.display='none'; return; }
+
   const ordered = [
-    ...nuevos.sort((a,b)     => b.fecha_encuesta.localeCompare(a.fecha_encuesta)),
-    ...pendientes.sort((a,b) => b.fecha_encuesta.localeCompare(a.fecha_encuesta)),
-    ...notificados.sort((a,b)=> b.fecha_notificacion.localeCompare(a.fecha_notificacion)),
+    ...rojos.sort((a,b)     => a.fecha_deteccion.localeCompare(b.fecha_deteccion)),
+    ...amarillos.sort((a,b) => b.fecha_encuesta.localeCompare(a.fecha_encuesta)),
+    ...celestes.sort((a,b)  => b.fecha_notificacion.localeCompare(a.fecha_notificacion)),
   ];
 
+  const CIRCLE = {
+    rojo:     '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red);margin-right:5px;flex-shrink:0"></span>',
+    amarillo: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--yellow);margin-right:5px;flex-shrink:0"></span>',
+    celeste:  '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#20d3c2;margin-right:5px;flex-shrink:0"></span>',
+  };
+
   const itemsHtml = ordered.map(a => {
-    const isNuevo     = !a.notificado_dm && a.fecha_deteccion === todayStr;
-    const isPendiente = !a.notificado_dm && a.fecha_deteccion !== todayStr;
-    const isNotif     = !!a.notificado_dm;
-    const cls         = isNuevo ? 'nuevo' : isPendiente ? 'pendiente' : 'notificado';
-    const badgeLabel  = isNuevo ? 'Nuevo hoy' : isPendiente ? 'Sin acuse' : 'Notificado';
-
-    let demoraHtml = '';
-    if(!isNotif && a.fecha_deteccion){
-      const dias = Math.floor((new Date() - new Date(a.fecha_deteccion)) / 86400000);
-      if(dias > 0) demoraHtml = `<span style="color:var(--red);font-weight:700"> · ${dias}d sin acuse</span>`;
-    }
-
-    let tiempoRespHtml = '';
-    if(isNotif && a.fecha_notificacion && a.fecha_deteccion){
-      const diff = Math.floor((new Date(a.fecha_notificacion.slice(0,10)) - new Date(a.fecha_deteccion)) / 86400000);
-      tiempoRespHtml = `<div class="alerta-notif-time">✓ Notificado ${a.fecha_notificacion} · respuesta en ${diff === 0 ? 'el mismo día' : diff + 'd'}</div>`;
-    }
+    const dias      = diasDesde(a.fecha_deteccion);
+    const isNotif   = !!a.notificado_dm;
+    const isCeleste = isNotif;
+    const isRojo    = !isNotif && dias > 2;
+    const tipo      = isCeleste ? 'celeste' : isRojo ? 'rojo' : 'amarillo';
+    const circle    = CIRCLE[tipo];
+    const bgMap     = { rojo:'rgba(224,82,82,.04)', amarillo:'rgba(240,180,41,.04)', celeste:'rgba(32,211,194,.06)' };
+    const badgeLabel = isCeleste
+      ? `Notificado DM`
+      : isRojo
+        ? `Sin acuse · ${dias}d`
+        : dias === 0 ? 'Nuevo hoy' : `${dias}d sin acuse`;
 
     const nombreHtml = a.nombre_paciente
-      ? `<span style="font-size:11px;color:var(--texto);font-weight:600"> · ${a.nombre_paciente}</span>`
-      : '';
+      ? `<span style="font-size:11px;color:var(--texto);font-weight:600"> · ${a.nombre_paciente}</span>` : '';
 
-    return `<div class="alerta-item ${cls}" id="alerta-${a.id}">
-      <div>
-        <span class="alerta-nps">${a.nps !== '' ? a.nps : '—'}</span>
+    const notifHtml = isCeleste && a.fecha_notificacion
+      ? `<div style="font-size:10px;color:#0d8a80;margin-top:3px">✓ ${a.fecha_notificacion}</div>` : '';
+
+    return `<div class="alerta-item" style="background:${bgMap[tipo]}" id="alerta-${a.id}">
+      <div style="padding-top:3px">
+        <span style="color:var(--yellow);font-size:15px;line-height:1">${'★'.repeat(Math.max(0,parseInt(a.estrellas)||0))}${'☆'.repeat(Math.max(0,5-(parseInt(a.estrellas)||0)))}</span>
       </div>
       <div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span class="alerta-badge ${cls}">${badgeLabel}</span>
-          <span style="font-size:11px;color:var(--muted)">${a.fecha_encuesta} · ${a.financiador}</span>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          ${circle}<span class="alerta-badge" style="background:transparent;padding:0;font-size:11px;font-weight:700;color:${tipo==='rojo'?'var(--red)':tipo==='amarillo'?'#7a5200':'#0d8a80'}">${badgeLabel}</span>
+          <span style="font-size:11px;color:var(--muted)"> · ${a.fecha_encuesta} · ${a.financiador}</span>
           ${nombreHtml}
-          ${demoraHtml}
         </div>
         <div class="alerta-cmt">"${a.comentario}"</div>
-        ${tiempoRespHtml}
+        ${notifHtml}
       </div>
       <div class="alerta-check-wrap">
         ${!isNotif ? `
           <input type="checkbox" class="alerta-check" id="chk-${a.id}"
             onchange="marcarNotificado('${a.id}', this)">
           <label for="chk-${a.id}" class="alerta-check-label">Notificado<br>DM</label>
-        ` : `<span style="font-size:18px;color:#0d8a80">✓</span>`}
+        ` : ''}
       </div>
     </div>`;
   }).join('');
@@ -894,8 +904,8 @@ function renderAlertas(items) {
   el.innerHTML = `<div class="alertas-card" id="alertas-card-inner">
     <div class="alertas-header">
       <div>
-        <div class="alertas-title">⚠ Alertas · Comentarios Negativos</div>
-        <div class="alertas-subtitle">${sinAcuse} sin acuse de recibo · ${notificados.length} notificados · desde 1 mayo 2026</div>
+        <div class="alertas-title">Alertas · Comentarios sin acuse</div>
+        <div class="alertas-subtitle">${rojos.length} críticos · ${amarillos.length} pendientes · desde 1 mayo 2026</div>
       </div>
     </div>
     ${itemsHtml}
