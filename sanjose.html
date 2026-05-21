@@ -98,13 +98,15 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 
 /* REPORT DESC */
 .report-desc {
-  background:rgba(32,211,194,.08); border-left:3px solid var(--turquesa);
+  border-left:3px solid var(--turquesa);
   border-radius:0 8px 8px 0; padding:10px 16px;
   font-size:13px; color:var(--muted); margin-bottom:10px; line-height:1.5;
+  background:rgba(32,211,194,.08);
+  min-height:72px;
 }
 
 /* GRID — 3 cards una al lado de la otra */
-#grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+#grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; align-items:start; }
 
 /* CARD — idéntica a BASA */
 .sc {
@@ -740,12 +742,19 @@ function render(){
 
   // 3 cards con su descripción arriba de cada una
   document.getElementById('grid').innerHTML =
-    ['nps','csat','estrellas'].map(r => `
-      <div>
-        <div class="report-desc">${REPORT_DESCS[r]}</div>
-        ${renderCard(r)}
-      </div>
-    `).join('');
+    ['nps','csat','estrellas'].map(r => {
+      const weekRow = getRow('week', document.getElementById('fil-fin').value || 'TODAS');
+      const weekVal = getVal(weekRow, r);
+      const cls     = colorCls(weekVal, r);
+      const color   = cls==='good' ? '#0d8a80' : cls==='warn' ? '#b07a00' : cls==='bad' ? 'var(--red)' : 'var(--turquesa)';
+      const bg      = cls==='good' ? 'rgba(32,211,194,.08)' : cls==='warn' ? 'rgba(240,180,41,.08)' : cls==='bad' ? 'rgba(224,82,82,.06)' : 'rgba(32,211,194,.08)';
+      return `
+        <div>
+          <div class="report-desc" style="border-left-color:${color};background:${bg}">${REPORT_DESCS[r]}</div>
+          ${renderCard(r)}
+        </div>
+      `;
+    }).join('');
 
   // Análisis IA debajo de los 3 bloques
   const gRow = getRow('month','TODAS');
