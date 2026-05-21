@@ -434,12 +434,12 @@ def analyze_with_ai(centro, neg_comments, nps_val, csat_val, stars_val):
 Métricas del último mes: NPS={nps_val}, CSAT={csat_val}, Estrellas={stars_val}
 
 Comentarios negativos (NPS≤6 o estrellas≤2):
-{chr(10).join(f'- {c}' for c in neg_comments[:30])}
+{chr(10).join(f'- {c[:120]}' for c in neg_comments[:20])}
 
-Respondé SOLO con JSON (sin markdown):
-{{"resumen":"2-3 oraciones sobre los problemas principales","problemas":[{{"tema":"...","frecuencia":"alta|media|baja","ejemplo":"..."}}],"tags":["tag1","tag2","tag3"]}}"""
+Respondé SOLO con JSON válido (sin markdown, sin texto extra, máximo 800 caracteres total):
+{{"resumen":"máximo 2 oraciones cortas sobre los problemas principales","problemas":[{{"tema":"...","frecuencia":"alta|media|baja","ejemplo":"max 60 chars"}}],"tags":["tag1","tag2","tag3"]}}"""
 
-    data = json.dumps({"model":"claude-sonnet-4-6","max_tokens":800,
+    data = json.dumps({"model":"claude-haiku-4-5-20251001","max_tokens":600,
                        "messages":[{"role":"user","content":prompt}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=data)
     req.add_header('x-api-key', ANTHROPIC_API_KEY)
