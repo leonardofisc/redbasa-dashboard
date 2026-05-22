@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Red Basa · Test diagnóstico Todoist San José
-Correr manualmente o via GitHub Actions para verificar acceso y datos disponibles.
 Requiere: TODOIST_SSJ env variable
 """
 import os, json, urllib.request, urllib.parse, datetime
@@ -14,14 +13,7 @@ if not TOKEN:
 def api_get(url):
     req = urllib.request.Request(url)
     req.add_header('Authorization', f'Bearer {TOKEN}')
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
-
-def api_post(url, data):
-    body = urllib.parse.urlencode(data).encode()
-    req = urllib.request.Request(url, data=body, method='POST')
-    req.add_header('Authorization', f'Bearer {TOKEN}')
-    req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+    req.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
 
@@ -38,8 +30,9 @@ print("=" * 60)
 # 1. Proyectos activos
 print("\n1. PROYECTOS ACTIVOS (SSJ):")
 try:
-    projects = api_get('https://api.todoist.com/rest/v2/projects')
-    ssj = [p for p in projects if p['name'].startswith('SSJ')]
+    data = api_get('https://api.todoist.com/api/v1/projects?limit=200')
+    projects = data.get('results', data) if isinstance(data, dict) else data
+    ssj = [p for p in projects if p.get('name','').startswith('SSJ')]
     print(f"   Total proyectos activos SSJ: {len(ssj)}")
     for p in ssj[:5]:
         print(f"   - {p['name'][:70]}")
@@ -48,21 +41,8 @@ try:
 except Exception as e:
     print(f"   ERROR: {e}")
 
-# 2. Todos los proyectos incluyendo archivados
-print("\n2. PROYECTOS ARCHIVADOS (SSJ):")
-try:
-    sync = api_post('https://api.todoist.com/sync/v9/sync',
-                    {'sync_token': '*', 'resource_types': '["projects"]'})
-    all_projects = sync.get('projects', [])
-    ssj_all      = [p for p in all_projects if p['name'].startswith('SSJ')]
-    ssj_archived = [p for p in ssj_all if p.get('is_archived', False)]
-    ssj_active   = [p for p in ssj_all if not p.get('is_archived', False)]
-    print(f"   Activos: {len(ssj_active)} · Archivados: {len(ssj_archived)} · Total: {len(ssj_all)}")
-except Exception as e:
-    print(f"   ERROR: {e}")
-
-# 3. Tareas completadas por período
-print("\n3. TAREAS COMPLETADAS:")
+# 2. Tareas completadas por período
+print("\n2. TAREAS COMPLETADAS:")
 TAREAS = ['Bienvenida al paciente', 'Visita Diaria', 'Realización de la encuesta']
 PERIODOS = [
     ('Última semana',  week_ago.isoformat(),  today.isoformat()),
@@ -73,40 +53,38 @@ PERIODOS = [
 for label, since, until in PERIODOS:
     print(f"\n   [{label}] {since} → {until}")
     try:
-        url = (f"https://api.todoist.com/sync/v9/items/completed/get_all"
+        url = (f"https://api.todoist.com/api/v1/tasks/completed/by_completion_date"
                f"?since={since}T00:00:00Z&until={until}T23:59:59Z&limit=200")
-        data = api_get(url)
-        items = data.get('items', [])
-        total = len(items)
-        print(f"   Total tareas completadas: {total}")
-
-        # Contar por tipo
+        data  = api_get(url)
+        items = data.get('items', data.get('results', []))
+        print(f"   Total tareas completadas: {len(items)}")
         conteos = {t: 0 for t in TAREAS}
-        otros   = 0
         for item in items:
-            nombre = item.get('content', '').strip()
+            nombre = item.get('content', item.get('task_content','')).strip()
             if nombre in conteos:
                 conteos[nombre] += 1
-            # Contar proyectos únicos (pacientes)
         pacientes = len(set(item.get('project_id') for item in items))
-        print(f"   Pacientes únicos involucrados: {pacientes}")
+        print(f"   Pacientes únicos: {pacientes}")
         for tarea, count in conteos.items():
             print(f"   - {tarea}: {count}")
-
     except Exception as e:
         print(f"   ERROR: {e}")
 
-# 4. Muestra de datos reales
-print("\n4. ÚLTIMAS 5 TAREAS COMPLETADAS:")
+# 3. Muestra de últimas tareas
+print("\n3. ÚLTIMAS 5 TAREAS COMPLETADAS (último mes):")
 try:
-    url = (f"https://api.todoist.com/sync/v9/items/completed/get_all"
+    url = (f"https://api.todoist.com/api/v1/tasks/completed/by_completion_date"
            f"?since={month_ago.isoformat()}T00:00:00Z"
            f"&until={today.isoformat()}T23:59:59Z&limit=5")
     data  = api_get(url)
-    items = data.get('items', [])
+    items = data.get('items', data.get('results', []))
     for item in items:
-        print(f"   {item.get('completed_at','')[:10]} | {item.get('content','')} | "
-              f"proyecto:{item.get('project_id','')[:8]}")
+        nombre    = item.get('content', item.get('task_content',''))
+        completed = item.get('completed_at', item.get('completedAt',''))[:10]
+        project   = str(item.get('project_id',''))[:8]
+        print(f"   {completed} | {nombre} | proyecto:{project}")
+    if not items:
+        print("   Sin tareas completadas en el período")
 except Exception as e:
     print(f"   ERROR: {e}")
 
