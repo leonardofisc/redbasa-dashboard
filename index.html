@@ -223,6 +223,16 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 .spark-title { font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:6px; }
 .spark-svg { width:100%; height:52px; }
 
+/* COBERTURA EP */
+.sc-cobertura { padding:10px 16px; border-top:1px solid var(--border); background:rgba(0,61,92,.02); }
+.cob-label { font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; }
+.cob-label span { font-weight:700; }
+.cob-bar-bg { height:8px; background:#e8f4f8; border-radius:4px; overflow:hidden; }
+.cob-bar-fill { height:100%; border-radius:4px; transition:width .4s; }
+.cob-bar-fill.good { background:#20d3c2; }
+.cob-bar-fill.bad  { background:var(--red); }
+.cob-meta { font-size:10px; color:var(--muted); margin-top:3px; }
+
 /* AI */
 .sc-ai { padding:12px 16px; border-top:1px solid var(--border); background:rgba(0,61,92,.02); }
 .ai-title { font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:6px; }
@@ -341,6 +351,7 @@ let centros = [];
 let activePeriod = 'month';
 let activeReport = 'nps';
 let lastUpdate = null;
+let coberturaEP = {}; // { centro: { altas_semana, enc_semana, pct_semana, altas_mes, enc_mes, pct_mes, altas_anio, enc_anio, pct_anio } }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────
 async function sha256(msg) {
@@ -452,6 +463,7 @@ async function loadData() {
     document.getElementById('sync-time').textContent = lastUpdate ? `Análisis: ${lastUpdate}` : '';
 
     render();
+    loadCobertura();
   } catch(e) {
     document.getElementById('grid').innerHTML =
       `<div class="loading-card" style="color:var(--red)">
@@ -462,6 +474,41 @@ async function loadData() {
 }
 
 function tryJSON(s, def) { try { return JSON.parse(s); } catch { return def; } }
+
+// ── COBERTURA EP ──────────────────────────────────────────────────────────
+async function loadCobertura() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${RESULTS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Cobertura%20EP`;
+    const resp = await fetch(url);
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    if (rows.length < 2) return;
+    const header = rows[0].map(h => h.trim());
+    const idx = {};
+    header.forEach((h,i) => idx[h] = i);
+    coberturaEP = {};
+    rows.slice(1).forEach(r => {
+      const get = k => (idx[k] !== undefined ? r[idx[k]] : '') || '';
+      const centro = get('centro').trim();
+      if (!centro) return;
+      coberturaEP[centro] = {
+        altas_semana: parseInt(get('altas_semana'))  || 0,
+        enc_semana:   parseInt(get('encuestas_semana')) || 0,
+        pct_semana:   parseFloat(get('pct_cobertura_semana')) || 0,
+        altas_mes:    parseInt(get('altas_mes'))     || 0,
+        enc_mes:      parseInt(get('encuestas_mes'))  || 0,
+        pct_mes:      parseFloat(get('pct_cobertura_mes')) || 0,
+        altas_anio:   parseInt(get('altas_anio'))    || 0,
+        enc_anio:     parseInt(get('encuestas_anio')) || 0,
+        pct_anio:     parseFloat(get('pct_cobertura_anio')) || 0,
+      };
+    });
+    // Re-render cards to show coverage bars
+    render();
+  } catch(e) {
+    console.warn('Cobertura EP no disponible:', e.message);
+  }
+}
 
 function parseCSV(txt) {
   const rows=[]; let cur=[],cell='',inQ=false;
@@ -752,6 +799,29 @@ function renderCard(centro) {
     ${indivChips?`<div class="prep-chips">${indivChips}</div>`:''}
   </div>`;
 
+  // Cobertura EP
+  let coberturaSection = '';
+  if (isEP(centro) && coberturaEP[centro]) {
+    const cob = coberturaEP[centro];
+    const periMap = { week: 'semana', month: 'mes', year: 'anio' };
+    const key = periMap[activePeriod] || 'mes';
+    const altas = cob[`altas_${key}`] || 0;
+    const enc   = cob[`enc_${key}`]   || 0;
+    const pct   = altas > 0 ? Math.min(Math.round(enc / altas * 100), 100) : 0;
+    const cls   = pct >= 40 ? 'good' : 'bad';
+    const pLbl  = {'week':'−1 sem','month':'−1 mes','year':'−1 año'}[activePeriod];
+    coberturaSection = `<div class="sc-cobertura">
+      <div class="cob-label">
+        Cobertura encuestas · ${pLbl}
+        <span style="color:${cls==='good'?'#0d8a80':'var(--red)'}">${pct}%</span>
+      </div>
+      <div class="cob-bar-bg">
+        <div class="cob-bar-fill ${cls}" style="width:${pct}%"></div>
+      </div>
+      <div class="cob-meta">${enc} encuestas / ${altas} altas</div>
+    </div>`;
+  }
+
   // Sparkline
   const sparkData = getRow(centro,'month','TODAS')?.sparkline || [];
   let sparkSection = '';
@@ -864,6 +934,7 @@ function renderCard(centro) {
     <div class="sc-periods">${periCols}</div>
     ${reportSection}
     ${prepSection}
+    ${coberturaSection}
     ${sparkSection}
     ${googleSection}
     ${aiSection}
