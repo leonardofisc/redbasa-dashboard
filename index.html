@@ -31,7 +31,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
   background:#fff; border-radius:16px; padding:40px 48px;
   width:360px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.3);
 }
-.login-box .logo { font-family:'Nunito',sans-serif; font-size:28px; font-weight:800; color:var(--turquesa); margin-bottom:4px; letter-spacing:.04em; }
+.login-box .logo { font-family:'Nunito',sans-serif; font-size:28px; font-weight:800; color:var(--turquesa); margin-bottom:4px; letter-spacing:.04em; text-transform:uppercase; }
 .login-box .logo span { color:var(--turquesa); }
 .login-box p { color:var(--muted); font-size:14px; margin-bottom:28px; }
 .login-box input {
@@ -99,16 +99,15 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 #net-summary {
   background:var(--navy); border-radius:16px;
   padding:20px 28px; color:#fff;
-  flex:1; min-width:0;
+  flex:1; min-width:0; align-self:stretch;
 }
 #ns-logo-wrap {
   flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
 }
 #ns-logo {
-  width:200px; height:200px; object-fit:contain;
+  width:150px; height:150px; object-fit:contain;
 }
-#net-summary { flex:1; min-width:0; }
 .ns-title {
   font-family:'Nunito',sans-serif; font-size:13px; font-weight:700;
   letter-spacing:.08em; text-transform:uppercase;
