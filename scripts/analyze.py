@@ -143,16 +143,14 @@ def today(): return datetime.date.today()
 
 def cutoffs():
     t = today()
-    def safe_month(y, m, d):
-        import calendar
-        last = calendar.monthrange(y, m)[1]
-        return datetime.date(y, m, min(d, last))
-    wk  = t - datetime.timedelta(days=7)
-    mo  = safe_month(t.year if t.month>1 else t.year-1, t.month-1 if t.month>1 else 12, t.day)
-    yr  = safe_month(t.year-1, t.month, t.day)
-    pwk = t - datetime.timedelta(days=14)
-    pmo = safe_month(t.year if t.month>2 else t.year-1, (t.month-2) if t.month>2 else (12+t.month-2), t.day)
-    pyr = safe_month(t.year-2, t.month, t.day)
+    # Períodos exactos: [t - (N-1), t] = N días incluyendo hoy
+    wk  = t - datetime.timedelta(days=6)    # 7 días exactos
+    mo  = t - datetime.timedelta(days=29)   # 30 días exactos
+    yr  = t - datetime.timedelta(days=364)  # 365 días exactos
+    # Períodos previos: mismo largo, inmediatamente anteriores
+    pwk = t - datetime.timedelta(days=13)   # prev 7 días
+    pmo = t - datetime.timedelta(days=59)   # prev 30 días
+    pyr = t - datetime.timedelta(days=729)  # prev 365 días
     return {
         'week':  (wk,  t),
         'month': (mo,  t),
