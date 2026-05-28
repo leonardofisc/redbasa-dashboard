@@ -63,9 +63,18 @@ def match_place_id(centro_name):
 C_DATE  = 0;  C_CENTRO = 2
 C_ADM   = 3;  C_MED    = 4;  C_ENF  = 5;  C_SEG  = 6;  C_LIMP  = 7
 C_LCAL  = 8;  C_INST   = 9;  C_MENU = 10
-C_STAR  = 11; C_NPS    = 12
+C_STAR  = 11; C_NPS    = 12; C_SERVICIO = 13
 C_ESP   = 15; C_SOL    = 16; C_CMT  = 17; C_PREP = 22
 C_NOMBRE = 18  # S: Nombre del paciente — se usa para filtrar filas de prueba
+
+# Servicios de internación incluidos en el reporte
+# Solo se contabilizan encuestas de pacientes internados
+SERVICIOS_INTERNACION = {
+    'internación general',
+    'unidad coronaria',
+    'maternidad y neonatología',
+    'terapia intensiva',
+}
 
 PREMIUM_NAMES = ['Swiss Medical','OSDE','Omint','Medicus','Sanidad','Accord Salud','Galeno','Jerárquico']
 PREMIUM_KEYS  = [p.lower() for p in PREMIUM_NAMES] + ['swis medical','jerarquico']
@@ -917,9 +926,14 @@ def main():
 
     print("\n1. Descargando planilla consolidada...")
     raw = fetch_sheet_values(CONSOLIDATED_SHEET_ID)
-    all_rows = [r for r in raw[1:] if r and len(r)>C_CENTRO and safe(r,C_DATE) and safe(r,C_CENTRO)
-                and 'prueba' not in safe(r,C_NOMBRE).lower()]
-    print(f"   {len(all_rows)} filas cargadas")
+    all_rows_raw = [r for r in raw[1:] if r and len(r)>C_CENTRO and safe(r,C_DATE) and safe(r,C_CENTRO)
+                    and 'prueba' not in safe(r,C_NOMBRE).lower()]
+    all_rows = [r for r in all_rows_raw
+                if safe(r, C_SERVICIO).strip().lower() in SERVICIOS_INTERNACION]
+    print(f"   {len(all_rows_raw)} filas totales → {len(all_rows)} filas de internación incluidas")
+    servicios_excluidos = set(safe(r, C_SERVICIO).strip() for r in all_rows_raw
+                               if safe(r, C_SERVICIO).strip().lower() not in SERVICIOS_INTERNACION)
+    print(f"   Servicios excluidos: {sorted(servicios_excluidos)}")
 
     cuts = cutoffs()
     centros = sorted(set(safe(r,C_CENTRO).strip() for r in all_rows))
