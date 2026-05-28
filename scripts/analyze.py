@@ -625,12 +625,12 @@ def get_all_altas_from_sheet(sheet_id, hoja, token):
         print(f"     ⚠ No se encontró header válido en {sheet_id}/{hoja}")
         return []
 
-    print(f"     Header en fila {header_idx}: enc={col_enc}, alta={col_alta}, calif={col_calif}")
-    print(f"     Primeras cols: {header[:8]}")
-
     col_enc  = next((i for i, h in enumerate(header) if 'encuesta' in h and 'tipo' not in h and 'envio' not in h), None)
     col_alta = next((i for i, h in enumerate(header) if 'fecha alta' in h or h == 'alta'), None)
     col_calif = next((i for i, h in enumerate(header) if 'calificaci' in h), None)
+
+    print(f"     Header en fila {header_idx}: enc={col_enc}, alta={col_alta}, calif={col_calif}")
+    print(f"     Primeras cols: {header[:8]}")
 
     if col_alta is None:
         return []
