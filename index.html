@@ -144,7 +144,7 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
   transition:box-shadow .2s, transform .2s;
 }
 .sc:hover { box-shadow:0 8px 32px rgba(0,61,92,.1); transform:translateY(-2px); }
-.sc.ep { border-color:var(--turquesa); }
+.sc.ep { border-color:var(--turquesa); margin-left:10px; margin-right:10px; }
 
 .sc-header {
   padding:16px 18px 12px; border-bottom:1px solid var(--border);
@@ -161,6 +161,14 @@ body { font-family:'Nunito Sans',sans-serif; background:var(--fondo); color:var(
 .badge-ep   { background:rgba(32,211,194,.15); color:#0d8a80; }
 .badge-noep { background:#f0f4f6; color:var(--muted); }
 .badge-crit { background:rgba(224,82,82,.12); color:var(--red); }
+.sc-bell {
+  display:flex; align-items:center; justify-content:center;
+  gap:4px; padding:3px 8px; border-radius:20px;
+  font-size:11px; font-weight:700; font-family:'Nunito',sans-serif;
+  cursor:default; flex-shrink:0;
+}
+.sc-bell.red    { background:rgba(224,82,82,.12); color:var(--red); }
+.sc-bell.yellow { background:rgba(255,193,7,.15); color:#b07a00; }
 
 /* PERIODS */
 .sc-periods { display:grid; grid-template-columns:1fr 1fr 1fr; border-bottom:1px solid var(--border); }
@@ -486,6 +494,7 @@ async function loadData() {
 
     render();
     loadCobertura();
+  loadAlertas();
   } catch(e) {
     document.getElementById('grid').innerHTML =
       `<div class="loading-card" style="color:var(--red)">
@@ -496,6 +505,42 @@ async function loadData() {
 }
 
 function tryJSON(s, def) { try { return JSON.parse(s); } catch { return def; } }
+
+// ── ALERTAS POR CENTRO ────────────────────────────────────────────────────
+async function loadAlertas() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${RESULTS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Comentarios%20Negativos`;
+    const resp = await fetch(url);
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    if (rows.length < 2) return;
+    const header = rows[0].map(h => h.trim());
+    const iCentro = header.indexOf('centro');
+    const iNotif  = header.indexOf('notificado_dm');
+    const iFechaNot = header.indexOf('fecha_notificacion');
+    if (iCentro < 0) return;
+    alertasPorCentro = {};
+    const ahora = Date.now();
+    rows.slice(1).forEach(r => {
+      const centro = (r[iCentro]||'').trim();
+      if (!centro) return;
+      const notif    = (r[iNotif]||'').trim();
+      const fechaNot = (r[iFechaNot]||'').trim();
+      if (!alertasPorCentro[centro]) alertasPorCentro[centro] = {rojo:0, amarillo:0};
+      if (!notif) {
+        // Sin acuse — calcular antigüedad
+        const fechaEnc = (r[header.indexOf('fecha_encuesta')]||'').trim();
+        const ms = fechaEnc ? ahora - new Date(fechaEnc).getTime() : ahora;
+        const dias = ms / 86400000;
+        if (dias > 2) alertasPorCentro[centro].rojo++;
+        else          alertasPorCentro[centro].amarillo++;
+      }
+    });
+    render();
+  } catch(e) {
+    console.warn('Alertas no disponibles:', e.message);
+  }
+}
 
 // ── COBERTURA EP ──────────────────────────────────────────────────────────
 async function loadCobertura() {
@@ -945,13 +990,19 @@ function renderCard(centro) {
   return `<div class="sc${isEP(centro)?' ep':''}">
     <div class="sc-header">
       <div class="sc-dot ${dotCls}"></div>
-      <div>
+      <div style="flex:1;min-width:0;">
         <div class="sc-name">${centro}</div>
         <div class="sc-badges">
           <span class="badge ${isEP(centro)?'badge-ep':'badge-noep'}">${epLabel(centro)}</span>
           ${isCrit?'<span class="badge badge-crit">Crítico</span>':''}
         </div>
       </div>
+      ${(()=>{ const a=alertasPorCentro[centro]||{rojo:0,amarillo:0};
+        const total=a.rojo+a.amarillo;
+        if(!total) return '';
+        const cls=a.rojo>0?'red':'yellow';
+        return `<div class="sc-bell ${cls}">🔔 ${total}</div>`;
+      })()}
     </div>
     <div class="sc-periods">${periCols}</div>
     ${reportSection}
