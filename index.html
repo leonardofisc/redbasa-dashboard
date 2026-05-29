@@ -382,6 +382,7 @@ let activePeriod = 'month';
 let activeReport = 'nps';
 let lastUpdate = null;
 let coberturaEP = {}; // { centro: { altas_semana, enc_semana, pct_semana, altas_mes, enc_mes, pct_mes, altas_anio, enc_anio, pct_anio } }
+let alertasPorCentro = {}; // { centro: { rojo, amarillo } }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────
 async function sha256(msg) {
